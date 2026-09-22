@@ -1,5 +1,6 @@
 import 'node:process';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -7,6 +8,7 @@ import pg from 'pg';
 
 const { Pool } = pg;
 const app = express();
+const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
 const port = Number(process.env.PORT || 3000);
 const sessionCookie = process.env.SESSION_COOKIE_NAME || 'nexora_session';
 const sessionHours = Number(process.env.SESSION_TTL_HOURS || 8);
@@ -244,9 +246,10 @@ app.get('/health',async(_req,res)=>{
   }
 });
 
-app.use(express.static('public',{extensions:['html'],dotfiles:'deny'}));
-app.get('/admin',(req,res)=>res.sendFile('admin.html',{root:'public'}));
-app.get('/connexion',(req,res)=>res.sendFile('connexion.html',{root:'public'}));
+app.use(express.static(publicDir,{extensions:['html'],dotfiles:'deny'}));
+app.get('/',(_req,res)=>res.sendFile('index.html',{root:publicDir}));
+app.get('/admin',(_req,res)=>res.sendFile('admin.html',{root:publicDir}));
+app.get('/connexion',(_req,res)=>res.sendFile('connexion.html',{root:publicDir}));
 if (pool) setInterval(()=>pool.query('DELETE FROM sessions WHERE expires_at<=NOW()').catch(()=>{}),60*60*1000).unref();
 
 app.use((err,_req,res,_next)=>{
