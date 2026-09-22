@@ -254,6 +254,11 @@ app.use((err,_req,res,_next)=>{
   res.status(500).json({error:'Une erreur interne est survenue.'});
 });
 
-const server=app.listen(port,()=>console.log(`NEXORA écoute sur le port ${port}`));
-async function shutdown(){await pool.end();server.close(()=>process.exit(0));}
-process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);
+let server;
+if (!process.env.VERCEL) {
+  server=app.listen(port,()=>console.log(`NEXORA écoute sur le port ${port}`));
+  async function shutdown(){await pool.end();server.close(()=>process.exit(0));}
+  process.on('SIGTERM',shutdown);process.on('SIGINT',shutdown);
+}
+
+export default app;
