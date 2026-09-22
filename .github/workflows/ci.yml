@@ -1,0 +1,22 @@
+name: NEXORA CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm install
+      - run: node --check src/server.js
+      - run: node --check public/site.js
+      - run: node --check public/admin.js
+      - run: node --check public/connexion.js
+      - run: node --check scripts/init-db.js
+      - run: node --check scripts/create-admin.js
