@@ -235,6 +235,15 @@ app.get('/api/admin/messages',auth,requireRole('admin','editor'),async(req,res,n
   try{const r=await pool.query('SELECT id,name,email,message,created_at,handled FROM contact_messages ORDER BY created_at DESC LIMIT 200');res.json(r.rows);}catch(e){next(e);}
 });
 
+app.get('/health',async(_req,res)=>{
+  try{
+    await pool.query('SELECT 1');
+    res.status(200).json({status:'ok',service:'nexora-group'});
+  }catch{
+    res.status(503).json({status:'error',service:'nexora-group'});
+  }
+});
+
 app.use(express.static('public',{extensions:['html'],dotfiles:'deny'}));
 app.get('/admin',(req,res)=>res.sendFile('admin.html',{root:'public'}));
 app.get('/connexion',(req,res)=>res.sendFile('connexion.html',{root:'public'}));
