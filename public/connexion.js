@@ -1,1 +1,8 @@
-async function submit(e){e.preventDefault();const msg=document.getElementById('msg');msg.textContent='';try{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Connexion impossible.');sessionStorage.setItem('nexora_csrf',d.csrfToken);location.href='/admin';}catch(err){msg.textContent=err.message;}}document.getElementById('login').addEventListener('submit',submit);
+const form=document.getElementById('login');
+form.addEventListener('submit',async e=>{
+ e.preventDefault();const msg=document.getElementById('msg');msg.textContent='Connexion…';
+ try{
+  const r=await fetch('/api/customer/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('email').value,password:document.getElementById('password').value})});
+  const d=await r.json();if(!r.ok){msg.textContent=d.error||'Connexion impossible.';return;}location.href='/compte';
+ }catch{msg.textContent='Impossible de contacter le serveur.';}
+});
