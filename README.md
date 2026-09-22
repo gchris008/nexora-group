@@ -30,3 +30,16 @@ Le compte administrateur initial doit être créé hors du site public avec la c
 ## Production
 
 Utiliser HTTPS, une base PostgreSQL gérée, des sauvegardes, des variables d'environnement protégées et un reverse proxy/TLS. Ne jamais placer un mot de passe, une clé API ou une chaîne de connexion réelle dans Git.
+
+
+## Accès administrateur
+
+- La page publique n'expose aucun lien vers l'administration.
+- Connexion privée : `/connexion`.
+- Après authentification, redirection vers `/admin`.
+- Les sessions et jetons CSRF sont gérés côté serveur.
+- Le tableau de bord permet de gérer le contenu, les produits, le mot de passe et, pour le rôle administrateur, le journal d'activité.
+
+## Vérifications
+
+`npm test` vérifie la syntaxe des fichiers JavaScript. La validation de production doit ensuite être effectuée avec PostgreSQL et un environnement HTTPS réel avant toute mise en ligne.
