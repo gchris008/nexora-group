@@ -45,6 +45,8 @@ app.use(helmet({
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: false, limit: '100kb' }));
 
+const contactLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 20, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Trop de demandes. Réessayez plus tard.' } });
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -60,6 +62,8 @@ function safeText(value, max) {
   return value.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, max);
 }
 function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
+function parseBoolean(value) { if (value === true || value === false) return value; if (value === 'true') return true; if (value === 'false') return false; return null; }
+async function audit(req, action, entity, entityId = null) { await pool.query('INSERT INTO audit_logs(admin_id,action,entity,entity_id,ip_address) VALUES($1,$2,$3,$4,$5)', [req.auth?.admin_id ?? null, action, entity, entityId == null ? null : String(entityId), req.ip]); }
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16);
@@ -105,7 +109,7 @@ app.get('/api/site', async (_req,res,next)=>{
   } catch(e){next(e);}
 });
 
-app.post('/api/contact', async (req,res,next)=>{
+app.post('/api/contact', contactLimiter, async (req,res,next)=>{
   try {
     const name=safeText(req.body.name,80), email=safeText(req.body.email,160).toLowerCase(), message=safeText(req.body.message,2000);
     if(!name || !validEmail(email) || !message) return res.status(400).json({error:'Informations de contact invalides.'});
@@ -132,7 +136,7 @@ app.post('/api/admin/logout',auth,csrf,async(req,res,next)=>{
   try{await pool.query('DELETE FROM sessions WHERE id=$1',[req.auth.id]);res.setHeader('Set-Cookie',`${sessionCookie}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${isProd?'; Secure':''}`);res.json({message:'Déconnexion effectuée.'});}catch(e){next(e);}
 });
 
-app.get('/api/admin/me',auth,(req,res)=>res.json({email:req.auth.email,role:req.auth.role,csrfToken:null}));
+app.get('/api/admin/me',auth,(req,res)=>{ const csrfToken=randomToken(); pool.query('UPDATE sessions SET csrf_hash=$1 WHERE id=$2',[sha256(csrfToken),req.auth.id]).then(()=>res.json({email:req.auth.email,role:req.auth.role,csrfToken})).catch(()=>res.status(500).json({error:'Session indisponible.'})); });
 
 app.get('/api/admin/site',auth,async(req,res,next)=>{
   try{const r=await pool.query('SELECT * FROM site_content WHERE id=1');res.json(r.rows[0]);}catch(e){next(e);}
@@ -143,7 +147,7 @@ app.put('/api/admin/site',auth,csrf,requireRole('admin','editor'),async(req,res,
     const company=safeText(req.body.company_name,120),tagline=safeText(req.body.tagline,240),hero=safeText(req.body.hero_text,1000),email=safeText(req.body.contact_email,160).toLowerCase();
     if(!company||!tagline||!hero||!validEmail(email)) return res.status(400).json({error:'Données invalides.'});
     const r=await pool.query('UPDATE site_content SET company_name=$1,tagline=$2,hero_text=$3,contact_email=$4,updated_at=NOW() WHERE id=1 RETURNING *',[company,tagline,hero,email]);
-    res.json(r.rows[0]);
+    await audit(req,'update','site','1'); res.json(r.rows[0]);
   }catch(e){next(e);}
 });
 
@@ -155,21 +159,39 @@ app.post('/api/admin/products',auth,csrf,requireRole('admin','manager'),async(re
   try{
     const name=safeText(req.body.name,160),description=safeText(req.body.description,2000),currency=safeText(req.body.currency,3).toUpperCase(),price=Number(req.body.price_cents);
     if(!name||!Number.isInteger(price)||price<0||!/^[A-Z]{3}$/.test(currency)) return res.status(400).json({error:'Produit invalide.'});
-    const r=await pool.query('INSERT INTO products(name,description,price_cents,currency) VALUES($1,$2,$3,$4) RETURNING *',[name,description,price,currency]);res.status(201).json(r.rows[0]);
+    const r=await pool.query('INSERT INTO products(name,description,price_cents,currency) VALUES($1,$2,$3,$4) RETURNING *',[name,description,price,currency]);await audit(req,'create','product',r.rows[0].id); res.status(201).json(r.rows[0]);
   }catch(e){next(e);}
 });
 
 app.put('/api/admin/products/:id',auth,csrf,requireRole('admin','manager'),async(req,res,next)=>{
   try{
-    const id=Number(req.params.id),name=safeText(req.body.name,160),description=safeText(req.body.description,2000),currency=safeText(req.body.currency,3).toUpperCase(),price=Number(req.body.price_cents),active=Boolean(req.body.active);
-    if(!Number.isInteger(id)||!name||!Number.isInteger(price)||price<0||!/^[A-Z]{3}$/.test(currency)) return res.status(400).json({error:'Produit invalide.'});
+    const id=Number(req.params.id),name=safeText(req.body.name,160),description=safeText(req.body.description,2000),currency=safeText(req.body.currency,3).toUpperCase(),price=Number(req.body.price_cents),active=parseBoolean(req.body.active);
+    if(!Number.isInteger(id)||!name||!Number.isInteger(price)||price<0||active===null||!/^[A-Z]{3}$/.test(currency)) return res.status(400).json({error:'Produit invalide.'});
     const r=await pool.query('UPDATE products SET name=$1,description=$2,price_cents=$3,currency=$4,active=$5,updated_at=NOW() WHERE id=$6 RETURNING *',[name,description,price,currency,active,id]);
-    if(!r.rowCount)return res.status(404).json({error:'Produit introuvable.'});res.json(r.rows[0]);
+    if(!r.rowCount)return res.status(404).json({error:'Produit introuvable.'}); await audit(req,'update','product',id); res.json(r.rows[0]);
   }catch(e){next(e);}
 });
 
 app.delete('/api/admin/products/:id',auth,csrf,requireRole('admin'),async(req,res,next)=>{
-  try{const r=await pool.query('DELETE FROM products WHERE id=$1 RETURNING id',[Number(req.params.id)]);if(!r.rowCount)return res.status(404).json({error:'Produit introuvable.'});res.status(204).end();}catch(e){next(e);}
+  try{const r=await pool.query('DELETE FROM products WHERE id=$1 RETURNING id',[Number(req.params.id)]);if(!r.rowCount)return res.status(404).json({error:'Produit introuvable.'});await audit(req,'delete','product',req.params.id); res.status(204).end();}catch(e){next(e);}
+});
+
+app.post('/api/admin/password',auth,csrf,async(req,res,next)=>{
+  try {
+    const current=typeof req.body.currentPassword==='string'?req.body.currentPassword:'';
+    const nextPassword=typeof req.body.newPassword==='string'?req.body.newPassword:'';
+    if(nextPassword.length<12 || nextPassword.length>200) return res.status(400).json({error:'Le nouveau mot de passe doit contenir au moins 12 caractères.'});
+    const r=await pool.query('SELECT password_hash FROM admins WHERE id=$1',[req.auth.admin_id]);
+    if(!r.rowCount || !verifyPassword(current,r.rows[0].password_hash)) return res.status(401).json({error:'Mot de passe actuel incorrect.'});
+    await pool.query('UPDATE admins SET password_hash=$1 WHERE id=$2',[hashPassword(nextPassword),req.auth.admin_id]);
+    await pool.query('DELETE FROM sessions WHERE admin_id=$1 AND id<>$2',[req.auth.admin_id,req.auth.id]);
+    await audit(req,'change_password','admin',req.auth.admin_id);
+    res.json({message:'Mot de passe modifié.'});
+  } catch(e){next(e);}
+});
+
+app.get('/api/admin/audit',auth,requireRole('admin'),async(req,res,next)=>{
+  try { const r=await pool.query('SELECT id,action,entity,entity_id,ip_address,created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200'); res.json(r.rows); } catch(e){next(e);}
 });
 
 app.get('/api/admin/messages',auth,requireRole('admin','editor'),async(req,res,next)=>{
@@ -178,6 +200,8 @@ app.get('/api/admin/messages',auth,requireRole('admin','editor'),async(req,res,n
 
 app.use(express.static('public',{extensions:['html'],dotfiles:'deny'}));
 app.get('/admin',(req,res)=>res.sendFile('admin.html',{root:'public'}));
+app.get('/connexion',(req,res)=>res.sendFile('connexion.html',{root:'public'}));
+setInterval(()=>pool.query('DELETE FROM sessions WHERE expires_at<=NOW()').catch(()=>{}),60*60*1000).unref();
 
 app.use((err,_req,res,_next)=>{
   console.error(err);
