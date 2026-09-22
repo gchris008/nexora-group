@@ -113,6 +113,29 @@ app.get('/api/site', async (_req,res,next)=>{
   } catch(e){next(e);}
 });
 
+app.post('/api/orders', async (req,res,next)=>{
+  const client=await pool.connect();
+  try {
+    const name=safeText(req.body.customer?.name,120), email=safeText(req.body.customer?.email,160).toLowerCase();
+    const phone=safeText(req.body.customer?.phone,40), address=safeText(req.body.customer?.address,240), city=safeText(req.body.customer?.city,120), country=safeText(req.body.customer?.country,120);
+    const items=Array.isArray(req.body.items)?req.body.items.slice(0,50):[];
+    if(!name||!validEmail(email)||!address||!city||!country||!items.length) return res.status(400).json({error:'Informations de commande invalides.'});
+    const ids=[...new Set(items.map(x=>Number(x.product_id)).filter(Number.isInteger))];
+    if(!ids.length)return res.status(400).json({error:'Panier invalide.'});
+    await client.query('BEGIN');
+    const products=(await client.query('SELECT id,name,price_cents,currency FROM products WHERE id=ANY($1::bigint[]) AND active=TRUE FOR SHARE',[ids])).rows;
+    const map=new Map(products.map(p=>[Number(p.id),p]));
+    let total=0,currency=null,lines=[];
+    for(const item of items){const id=Number(item.product_id),qty=Number(item.quantity),p=map.get(id);if(!p||!Number.isInteger(qty)||qty<1||qty>99)throw Object.assign(new Error('Panier invalide.'),{statusCode:400});if(currency&&currency!==p.currency)throw Object.assign(new Error('Les produits doivent utiliser la même devise.'),{statusCode:400});currency=p.currency;const line=p.price_cents*qty;total+=line;lines.push({p,qty,line});}
+    if(total>2147483647)throw Object.assign(new Error('Commande trop élevée.'),{statusCode:400});
+    const customer=(await client.query('INSERT INTO customers(name,email,phone,address,city,country) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,phone=EXCLUDED.phone,address=EXCLUDED.address,city=EXCLUDED.city,country=EXCLUDED.country,updated_at=NOW() RETURNING id',[name,email,phone,address,city,country])).rows[0];
+    const order=(await client.query('INSERT INTO orders(customer_id,currency,total_cents) VALUES($1,$2,$3) RETURNING id,status,total_cents,currency,created_at',[customer.id,currency,total])).rows[0];
+    for(const l of lines)await client.query('INSERT INTO order_items(order_id,product_id,product_name,unit_price_cents,quantity,line_total_cents) VALUES($1,$2,$3,$4,$5,$6)',[order.id,l.p.id,l.p.name,l.p.price_cents,l.qty,l.line]);
+    await client.query('COMMIT');
+    res.status(201).json({order});
+  }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(e.statusCode||500).json({error:e.statusCode?e.message:'Impossible de créer la commande.'});}finally{client.release();}
+});
+
 app.post('/api/contact', contactLimiter, async (req,res,next)=>{
   try {
     const name=safeText(req.body.name,80), email=safeText(req.body.email,160).toLowerCase(), message=safeText(req.body.message,2000);
@@ -198,6 +221,12 @@ app.get('/api/admin/audit',auth,requireRole('admin'),async(req,res,next)=>{
   try { const r=await pool.query('SELECT id,action,entity,entity_id,ip_address,created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200'); res.json(r.rows); } catch(e){next(e);}
 });
 
+app.get('/api/admin/orders',auth,requireRole('admin','manager','editor'),async(req,res,next)=>{
+  try{const r=await pool.query('SELECT o.id,o.status,o.currency,o.total_cents,o.created_at,c.name,c.email,c.city,c.country FROM orders o JOIN customers c ON c.id=o.customer_id ORDER BY o.created_at DESC LIMIT 500');res.json(r.rows);}catch(e){next(e);}
+});
+app.put('/api/admin/orders/:id/status',auth,csrf,requireRole('admin','manager'),async(req,res,next)=>{
+  try{const id=Number(req.params.id),status=safeText(req.body.status,20);if(!Number.isInteger(id)||!['pending','confirmed','processing','shipped','delivered','cancelled'].includes(status))return res.status(400).json({error:'Statut invalide.'});const r=await pool.query('UPDATE orders SET status=$1,updated_at=NOW() WHERE id=$2 RETURNING *',[status,id]);if(!r.rowCount)return res.status(404).json({error:'Commande introuvable.'});await audit(req,'update','order',id);res.json(r.rows[0]);}catch(e){next(e);}
+});
 app.get('/api/admin/messages',auth,requireRole('admin','editor'),async(req,res,next)=>{
   try{const r=await pool.query('SELECT id,name,email,message,created_at,handled FROM contact_messages ORDER BY created_at DESC LIMIT 200');res.json(r.rows);}catch(e){next(e);}
 });
