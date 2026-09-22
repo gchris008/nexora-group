@@ -149,6 +149,92 @@ app.post('/api/contact', contactLimiter, async (req,res,next)=>{
   }catch(e){next(e);}
 });
 
+
+const customerAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Trop de tentatives. Réessayez plus tard.' }
+});
+
+async function customerAuth(req, res, next) {
+  try {
+    const raw = req.headers.cookie?.split(';').map(v => v.trim())
+      .find(v => v.startsWith('nexora_customer_session='))
+      ?.slice('nexora_customer_session='.length);
+    if (!raw) return res.status(401).json({ error: 'Connexion requise.' });
+    const r = await pool.query(
+      'SELECT s.id,s.customer_id,c.name,c.email,c.phone,c.address,c.city,c.country FROM customer_sessions s JOIN customers c ON c.id=s.customer_id WHERE s.token_hash=$1 AND s.expires_at>NOW()',
+      [sha256(raw)]
+    );
+    if (!r.rowCount) return res.status(401).json({ error: 'Session invalide ou expirée.' });
+    req.customer = r.rows[0];
+    req.rawCustomerSession = raw;
+    next();
+  } catch (e) { next(e); }
+}
+
+app.post('/api/customer/register', customerAuthLimiter, async (req,res,next)=>{
+  try {
+    const name=safeText(req.body.name,120), email=safeText(req.body.email,160).toLowerCase();
+    const password=typeof req.body.password==='string'?req.body.password:'';
+    if(!name||!validEmail(email)||password.length<12||password.length>200)
+      return res.status(400).json({error:'Nom, e-mail ou mot de passe invalide. Le mot de passe doit contenir au moins 12 caractères.'});
+    const existing=await pool.query('SELECT id,password_hash FROM customers WHERE email=$1',[email]);
+    if(existing.rowCount && existing.rows[0].password_hash)
+      return res.status(409).json({error:'Un compte existe déjà avec cette adresse e-mail.'});
+    const hash=hashPassword(password);
+    const r=await pool.query(
+      `INSERT INTO customers(name,email,password_hash) VALUES($1,$2,$3)
+       ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,password_hash=EXCLUDED.password_hash,updated_at=NOW()
+       RETURNING id,name,email`,
+      [name,email,hash]
+    );
+    const raw=randomToken(), expires=new Date(Date.now()+sessionHours*3600000);
+    await pool.query('INSERT INTO customer_sessions(token_hash,customer_id,expires_at) VALUES($1,$2,$3)',[sha256(raw),r.rows[0].id,expires]);
+    res.setHeader('Set-Cookie',`nexora_customer_session=${raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${sessionHours*3600}${isProd?'; Secure':''}`);
+    res.status(201).json({customer:r.rows[0]});
+  } catch(e){next(e);}
+});
+
+app.post('/api/customer/login', customerAuthLimiter, async(req,res,next)=>{
+  try {
+    const email=safeText(req.body.email,160).toLowerCase(), password=typeof req.body.password==='string'?req.body.password:'';
+    if(!validEmail(email)||password.length<12)return res.status(400).json({error:'Identifiants invalides.'});
+    const r=await pool.query('SELECT id,name,email,password_hash FROM customers WHERE email=$1',[email]);
+    if(!r.rowCount||!r.rows[0].password_hash||!verifyPassword(password,r.rows[0].password_hash))
+      return res.status(401).json({error:'E-mail ou mot de passe incorrect.'});
+    const raw=randomToken(),expires=new Date(Date.now()+sessionHours*3600000);
+    await pool.query('INSERT INTO customer_sessions(token_hash,customer_id,expires_at) VALUES($1,$2,$3)',[sha256(raw),r.rows[0].id,expires]);
+    res.setHeader('Set-Cookie',`nexora_customer_session=${raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${sessionHours*3600}${isProd?'; Secure':''}`);
+    res.json({customer:{id:r.rows[0].id,name:r.rows[0].name,email:r.rows[0].email}});
+  } catch(e){next(e);}
+});
+
+app.post('/api/customer/logout',customerAuth,async(req,res,next)=>{
+  try{
+    await pool.query('DELETE FROM customer_sessions WHERE id=$1',[req.customer.id]);
+    res.setHeader('Set-Cookie','nexora_customer_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0');
+    res.json({message:'Déconnexion effectuée.'});
+  }catch(e){next(e);}
+});
+
+app.get('/api/customer/me',customerAuth,(req,res)=>res.json({customer:req.customer}));
+
+app.get('/api/customer/orders',customerAuth,async(req,res,next)=>{
+  try{
+    const orders=(await pool.query(
+      `SELECT o.id,o.status,o.currency,o.total_cents,o.payment_status,o.payment_method,o.created_at,
+              COALESCE(json_agg(json_build_object('name',oi.product_name,'quantity',oi.quantity,'unit_price_cents',oi.unit_price_cents,'line_total_cents',oi.line_total_cents) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL),'[]') AS items
+       FROM orders o LEFT JOIN order_items oi ON oi.order_id=o.id
+       WHERE o.customer_id=$1 GROUP BY o.id ORDER BY o.created_at DESC`,
+      [req.customer.customer_id]
+    )).rows;
+    res.json(orders);
+  }catch(e){next(e);}
+});
+
 app.post('/api/admin/login', loginLimiter, async (req,res,next)=>{
   try {
     const email=safeText(req.body.email,160).toLowerCase(), password=typeof req.body.password==='string'?req.body.password:'';
