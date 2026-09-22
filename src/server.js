@@ -103,7 +103,7 @@ function csrf(req,res,next) {
 }
 
 app.get('/api/products', async (_req,res,next)=>{
-  try { const r=await pool.query('SELECT id,name,description,price_cents,currency FROM products WHERE active=TRUE ORDER BY created_at DESC'); res.json(r.rows); } catch(e){next(e);}
+  try { const r=await pool.query('SELECT id,name,description,price_cents,currency,sku,category,image_url,stock_quantity FROM products WHERE active=TRUE ORDER BY created_at DESC'); res.json(r.rows); } catch(e){next(e);}
 });
 
 app.get('/api/site', async (_req,res,next)=>{
@@ -123,18 +123,22 @@ app.post('/api/orders', async (req,res,next)=>{
     const ids=[...new Set(items.map(x=>Number(x.product_id)).filter(Number.isInteger))];
     if(!ids.length)return res.status(400).json({error:'Panier invalide.'});
     await client.query('BEGIN');
-    const products=(await client.query('SELECT id,name,price_cents,currency FROM products WHERE id=ANY($1::bigint[]) AND active=TRUE FOR SHARE',[ids])).rows;
+    const products=(await client.query('SELECT id,name,price_cents,currency FROM products WHERE id=ANY($1::bigint[]) AND active=TRUE FOR UPDATE',[ids])).rows;
     const map=new Map(products.map(p=>[Number(p.id),p]));
     let total=0,currency=null,lines=[];
-    for(const item of items){const id=Number(item.product_id),qty=Number(item.quantity),p=map.get(id);if(!p||!Number.isInteger(qty)||qty<1||qty>99)throw Object.assign(new Error('Panier invalide.'),{statusCode:400});if(currency&&currency!==p.currency)throw Object.assign(new Error('Les produits doivent utiliser la même devise.'),{statusCode:400});currency=p.currency;const line=p.price_cents*qty;total+=line;lines.push({p,qty,line});}
+    for(const item of items){const id=Number(item.product_id),qty=Number(item.quantity),p=map.get(id);if(!p||!Number.isInteger(qty)||qty<1||qty>99)throw Object.assign(new Error('Panier invalide.'),{statusCode:400});if(qty>p.stock_quantity)throw Object.assign(new Error(`Stock insuffisant pour ${p.name}.`),{statusCode:409});if(currency&&currency!==p.currency)throw Object.assign(new Error('Les produits doivent utiliser la même devise.'),{statusCode:400});currency=p.currency;const line=p.price_cents*qty;total+=line;lines.push({p,qty,line});}
     if(total>2147483647)throw Object.assign(new Error('Commande trop élevée.'),{statusCode:400});
     const customer=(await client.query('INSERT INTO customers(name,email,phone,address,city,country) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,phone=EXCLUDED.phone,address=EXCLUDED.address,city=EXCLUDED.city,country=EXCLUDED.country,updated_at=NOW() RETURNING id',[name,email,phone,address,city,country])).rows[0];
     const order=(await client.query('INSERT INTO orders(customer_id,currency,total_cents) VALUES($1,$2,$3) RETURNING id,status,total_cents,currency,created_at',[customer.id,currency,total])).rows[0];
-    for(const l of lines)await client.query('INSERT INTO order_items(order_id,product_id,product_name,unit_price_cents,quantity,line_total_cents) VALUES($1,$2,$3,$4,$5,$6)',[order.id,l.p.id,l.p.name,l.p.price_cents,l.qty,l.line]);
+    for(const l of lines){await client.query('UPDATE products SET stock_quantity=stock_quantity-$1,updated_at=NOW() WHERE id=$2',[l.qty,l.p.id]);await client.query('INSERT INTO order_items(order_id,product_id,product_name,unit_price_cents,quantity,line_total_cents) VALUES($1,$2,$3,$4,$5,$6)',[order.id,l.p.id,l.p.name,l.p.price_cents,l.qty,l.line]);}
     await client.query('COMMIT');
     res.status(201).json({order});
   }catch(e){await client.query('ROLLBACK').catch(()=>{});res.status(e.statusCode||500).json({error:e.statusCode?e.message:'Impossible de créer la commande.'});}finally{client.release();}
 });
+
+
+app.get('/api/payments/methods',(_req,res)=>res.json([{id:'card',label:'Carte Visa / Mastercard',available:Boolean(process.env.SOLUTIONSPAYMENTS_API_URL)},{id:'moncash',label:'MonCash',available:Boolean(process.env.MONCASH_API_URL)},{id:'natcash',label:'NatCash',available:Boolean(process.env.NATCASH_API_URL)},{id:'binance_pay',label:'Binance Pay',available:Boolean(process.env.BINANCE_PAY_API_KEY&&process.env.BINANCE_PAY_SECRET_KEY)}]));
+app.post('/api/payments/create',async(req,res,next)=>{const c=await pool.connect();try{const orderId=Number(req.body.order_id),method=safeText(req.body.method,20);if(!Number.isInteger(orderId)||!['card','moncash','natcash','binance_pay'].includes(method))return res.status(400).json({error:'Méthode de paiement invalide.'});await c.query('BEGIN');const r=await c.query('SELECT id,total_cents,currency,payment_status FROM orders WHERE id=$1 FOR UPDATE',[orderId]);if(!r.rowCount)return res.status(404).json({error:'Commande introuvable.'});const o=r.rows[0];const env={card:'SOLUTIONSPAYMENTS_API_URL',moncash:'MONCASH_API_URL',natcash:'NATCASH_API_URL',binance_pay:'BINANCE_PAY_API_KEY'}[method];if(!process.env[env]){await c.query('ROLLBACK');return res.status(503).json({error:'Ce moyen de paiement sera activé après configuration du compte marchand.'});}await c.query("INSERT INTO payments(order_id,method,provider,amount_cents,currency) VALUES($1,$2,$2,$3,$4)",[o.id,method,o.total_cents,o.currency]);await c.query("UPDATE orders SET payment_status='pending',payment_method=$1,updated_at=NOW() WHERE id=$2",[method,o.id]);await c.query('COMMIT');res.status(201).json({message:'Paiement préparé. Le connecteur du prestataire sera finalisé avec les clés marchandes.',checkout_url:null});}catch(e){await c.query('ROLLBACK').catch(()=>{});next(e)}finally{c.release()}});
 
 app.post('/api/contact', contactLimiter, async (req,res,next)=>{
   try {
@@ -184,9 +188,9 @@ app.get('/api/admin/products',auth,async(req,res,next)=>{
 
 app.post('/api/admin/products',auth,csrf,requireRole('admin','manager'),async(req,res,next)=>{
   try{
-    const name=safeText(req.body.name,160),description=safeText(req.body.description,2000),currency=safeText(req.body.currency,3).toUpperCase(),price=Number(req.body.price_cents);
-    if(!name||!Number.isInteger(price)||price<0||!/^[A-Z]{3}$/.test(currency)) return res.status(400).json({error:'Produit invalide.'});
-    const r=await pool.query('INSERT INTO products(name,description,price_cents,currency) VALUES($1,$2,$3,$4) RETURNING *',[name,description,price,currency]);await audit(req,'create','product',r.rows[0].id); res.status(201).json(r.rows[0]);
+    const name=safeText(req.body.name,160),description=safeText(req.body.description,2000),currency=safeText(req.body.currency,3).toUpperCase(),price=Number(req.body.price_cents),stock=Number(req.body.stock_quantity);
+    if(!name||!Number.isInteger(price)||price<0||!Number.isInteger(stock)||stock<0||!/^[A-Z]{3}$/.test(currency)) return res.status(400).json({error:'Produit invalide.'});
+    const r=await pool.query('INSERT INTO products(name,description,price_cents,currency,stock_quantity) VALUES($1,$2,$3,$4,$5) RETURNING *',[name,description,price,currency,stock]);await audit(req,'create','product',r.rows[0].id); res.status(201).json(r.rows[0]);
   }catch(e){next(e);}
 });
 
