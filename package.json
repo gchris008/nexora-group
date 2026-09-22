@@ -4,12 +4,15 @@
   "private": true,
   "description": "NEXORA GROUP — plateforme commerciale et technologique internationale.",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "db:init": "node scripts/init-db.js",
-    "admin:create": "node scripts/create-admin.js"
+    "admin:create": "node scripts/create-admin.js",
+    "test": "node --check src/server.js && node --check public/site.js && node --check public/admin.js && node --check public/connexion.js && node --check scripts/init-db.js && node --check scripts/create-admin.js"
   },
   "dependencies": {
     "express": "^5.1.0",
