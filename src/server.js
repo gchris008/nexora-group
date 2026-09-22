@@ -311,6 +311,34 @@ app.get('/api/admin/audit',auth,requireRole('admin'),async(req,res,next)=>{
   try { const r=await pool.query('SELECT id,action,entity,entity_id,ip_address,created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200'); res.json(r.rows); } catch(e){next(e);}
 });
 
+app.get('/api/admin/customers',auth,requireRole('admin','manager','editor'),async(req,res,next)=>{
+  try{
+    const r=await pool.query(`SELECT c.id,c.name,c.email,c.phone,c.country,c.active,c.balance_cents,c.created_at,
+      COUNT(o.id)::int AS order_count
+      FROM customers c LEFT JOIN orders o ON o.customer_id=c.id
+      GROUP BY c.id ORDER BY c.created_at DESC LIMIT 1000`);
+    res.json(r.rows);
+  }catch(e){next(e);}
+});
+app.put('/api/admin/customers/:id/status',auth,csrf,requireRole('admin','manager'),async(req,res,next)=>{
+  try{
+    const id=Number(req.params.id), active=parseBoolean(req.body.active);
+    if(!Number.isInteger(id)||active===null)return res.status(400).json({error:'Statut invalide.'});
+    const r=await pool.query('UPDATE customers SET active=$1,updated_at=NOW() WHERE id=$2 RETURNING id,active',[active,id]);
+    if(!r.rowCount)return res.status(404).json({error:'Client introuvable.'});
+    await audit(req,'update','customer_status',id);res.json(r.rows[0]);
+  }catch(e){next(e);}
+});
+app.put('/api/admin/customers/:id/balance',auth,csrf,requireRole('admin','manager'),async(req,res,next)=>{
+  try{
+    const id=Number(req.params.id), amount=Number(req.body.balance_cents);
+    if(!Number.isInteger(id)||!Number.isSafeInteger(amount)||amount<0)return res.status(400).json({error:'Solde invalide.'});
+    const r=await pool.query('UPDATE customers SET balance_cents=$1,updated_at=NOW() WHERE id=$2 RETURNING id,balance_cents',[amount,id]);
+    if(!r.rowCount)return res.status(404).json({error:'Client introuvable.'});
+    await audit(req,'update','customer_balance',id);res.json(r.rows[0]);
+  }catch(e){next(e);}
+});
+
 app.get('/api/admin/orders',auth,requireRole('admin','manager','editor'),async(req,res,next)=>{
   try{const r=await pool.query('SELECT o.id,o.status,o.currency,o.total_cents,o.created_at,c.name,c.email,c.city,c.country FROM orders o JOIN customers c ON c.id=o.customer_id ORDER BY o.created_at DESC LIMIT 500');res.json(r.rows);}catch(e){next(e);}
 });
