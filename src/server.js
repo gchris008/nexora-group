@@ -102,6 +102,10 @@ function csrf(req,res,next) {
   next();
 }
 
+app.get('/api/products', async (_req,res,next)=>{
+  try { const r=await pool.query('SELECT id,name,description,price_cents,currency FROM products WHERE active=TRUE ORDER BY created_at DESC'); res.json(r.rows); } catch(e){next(e);}
+});
+
 app.get('/api/site', async (_req,res,next)=>{
   try {
     const r=await pool.query('SELECT company_name,tagline,hero_text,contact_email FROM site_content WHERE id=1');
