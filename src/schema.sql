@@ -101,3 +101,17 @@ CREATE TABLE IF NOT EXISTS payments (id BIGSERIAL PRIMARY KEY,order_id BIGINT NO
 CREATE INDEX IF NOT EXISTS payments_order_idx ON payments(order_id);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method TEXT;
+
+
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS customer_sessions (
+  id BIGSERIAL PRIMARY KEY,
+  token_hash TEXT UNIQUE NOT NULL,
+  customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS customer_sessions_token_hash_idx ON customer_sessions(token_hash);
+CREATE INDEX IF NOT EXISTS customer_sessions_expires_at_idx ON customer_sessions(expires_at);
