@@ -12,14 +12,12 @@ const sessionCookie = process.env.SESSION_COOKIE_NAME || 'nexora_session';
 const sessionHours = Number(process.env.SESSION_TTL_HOURS || 8);
 const isProd = process.env.NODE_ENV === 'production';
 
-if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL est obligatoire.');
-
-const pool = new Pool({
+const pool = process.env.DATABASE_URL ? new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isProd ? { rejectUnauthorized: true } : false,
   max: 10,
   idleTimeoutMillis: 30000
-});
+}) : null;
 
 app.disable('x-powered-by');
 if (process.env.TRUST_PROXY === '1') app.set('trust proxy', 1);
@@ -63,7 +61,7 @@ function safeText(value, max) {
 }
 function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
 function parseBoolean(value) { if (value === true || value === false) return value; if (value === 'true') return true; if (value === 'false') return false; return null; }
-async function audit(req, action, entity, entityId = null) { await pool.query('INSERT INTO audit_logs(admin_id,action,entity,entity_id,ip_address) VALUES($1,$2,$3,$4,$5)', [req.auth?.admin_id ?? null, action, entity, entityId == null ? null : String(entityId), req.ip]); }
+async function audit(req, action, entity, entityId = null) { if (!pool) return; await pool.query('INSERT INTO audit_logs(admin_id,action,entity,entity_id,ip_address) VALUES($1,$2,$3,$4,$5)', [req.auth?.admin_id ?? null, action, entity, entityId == null ? null : String(entityId), req.ip]); }
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16);
@@ -237,6 +235,7 @@ app.get('/api/admin/messages',auth,requireRole('admin','editor'),async(req,res,n
 
 app.get('/health',async(_req,res)=>{
   try{
+    if (!pool) return res.status(503).json({status:'error',service:'nexora-group',reason:'database_not_configured'});
     await pool.query('SELECT 1');
     res.status(200).json({status:'ok',service:'nexora-group'});
   }catch{
@@ -247,7 +246,7 @@ app.get('/health',async(_req,res)=>{
 app.use(express.static('public',{extensions:['html'],dotfiles:'deny'}));
 app.get('/admin',(req,res)=>res.sendFile('admin.html',{root:'public'}));
 app.get('/connexion',(req,res)=>res.sendFile('connexion.html',{root:'public'}));
-setInterval(()=>pool.query('DELETE FROM sessions WHERE expires_at<=NOW()').catch(()=>{}),60*60*1000).unref();
+if (pool) setInterval(()=>pool.query('DELETE FROM sessions WHERE expires_at<=NOW()').catch(()=>{}),60*60*1000).unref();
 
 app.use((err,_req,res,_next)=>{
   console.error(err);
