@@ -234,12 +234,13 @@ app.get('/api/admin/messages',auth,requireRole('admin','editor'),async(req,res,n
 });
 
 app.get('/health',async(_req,res)=>{
+  const diagnostics={service:'nexora-group',vercel_env:process.env.VERCEL_ENV||null,node_env:process.env.NODE_ENV||null,has_database_url:Boolean(process.env.DATABASE_URL)};
   try{
-    if (!pool) return res.status(503).json({status:'error',service:'nexora-group',reason:'database_not_configured'});
+    if(!pool)return res.status(503).json({status:'error',reason:'database_not_configured',...diagnostics});
     await pool.query('SELECT 1');
-    res.status(200).json({status:'ok',service:'nexora-group'});
-  }catch{
-    res.status(503).json({status:'error',service:'nexora-group'});
+    res.status(200).json({status:'ok',...diagnostics});
+  }catch(error){
+    res.status(503).json({status:'error',reason:'database_connection_failed',error_type:error?.name||'Error',...diagnostics});
   }
 });
 
