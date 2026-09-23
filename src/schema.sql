@@ -109,6 +109,7 @@ UPDATE customers SET username = 'client-' || id::text WHERE username IS NULL OR 
 ALTER TABLE customers ALTER COLUMN username SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS customers_username_unique_idx ON customers(LOWER(username));
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS phone_verified_at TIMESTAMPTZ;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS balance_cents BIGINT NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS customers_active_idx ON customers(active);
@@ -123,3 +124,17 @@ CREATE TABLE IF NOT EXISTS customer_sessions (
 );
 CREATE INDEX IF NOT EXISTS customer_sessions_token_hash_idx ON customer_sessions(token_hash);
 CREATE INDEX IF NOT EXISTS customer_sessions_expires_at_idx ON customer_sessions(expires_at);
+
+CREATE TABLE IF NOT EXISTS customer_verification_challenges (
+  id BIGSERIAL PRIMARY KEY,
+  customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  purpose TEXT NOT NULL CHECK (purpose IN ('registration','login','profile','new_phone')),
+  phone TEXT NOT NULL,
+  verification_sid TEXT NOT NULL,
+  payload JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS customer_verification_challenges_customer_idx ON customer_verification_challenges(customer_id, purpose, created_at DESC);
+CREATE INDEX IF NOT EXISTS customer_verification_challenges_expires_idx ON customer_verification_challenges(expires_at);
