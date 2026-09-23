@@ -236,7 +236,7 @@ app.post('/api/customer/register', customerAuthLimiter, async (req,res,next)=>{
     const hash=hashPassword(password);
     const customer=(await pool.query('INSERT INTO customers(name,username,email,password_hash,phone,active,email_verified_at) VALUES($1,$2,$3,$4,$5,FALSE,NULL) RETURNING id,name,username,email,phone',[name,username,email,hash,phone])).rows[0];
     const code=randomVerificationCode();
-    await pool.query('INSERT INTO customer_email_verifications(customer_id,purpose,email,code_hash,expires_at) VALUES($1,\\'registration\\',$2,$3,NOW()+INTERVAL \\'10 minutes\\')',[customer.id,email,hashVerificationCode(code)]);
+    await pool.query('INSERT INTO customer_email_verifications(customer_id,purpose,email,code_hash,expires_at) VALUES($1,\'registration\',$2,$3,NOW()+INTERVAL \'10 minutes\')',[customer.id,email,hashVerificationCode(code)]);
     try {
       await sendEmail({to:email,subject:'NEXORA GROUP — Vérification de votre compte',html:'<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>NEXORA GROUP</h2><p>Bonjour '+escapeHtml(name)+',</p><p>Votre code de vérification est :</p><p style="font-size:32px;font-weight:700;letter-spacing:8px">'+code+'</p><p>Ce code expire dans 10 minutes.</p><p>Si vous n’êtes pas à l’origine de cette inscription, ignorez cet e-mail.</p></div>'});
     } catch(e) {
@@ -257,7 +257,7 @@ app.post('/api/customer/verify-registration', customerAuthLimiter, async(req,res
     await ensureCustomerAuthSchema();
     const customerId=Number(req.body.customer_id), email=safeText(req.body.email,160).toLowerCase(), code=safeText(req.body.code,10);
     if(!Number.isInteger(customerId)||!validEmail(email)||!/^[0-9]{6}$/.test(code)) return res.status(400).json({error:'Code de vérification invalide.'});
-    const challenge=(await pool.query('SELECT id,code_hash FROM customer_email_verifications WHERE customer_id=$1 AND purpose=\\'registration\\' AND email=$2 AND consumed_at IS NULL AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1',[customerId,email])).rows[0];
+    const challenge=(await pool.query('SELECT id,code_hash FROM customer_email_verifications WHERE customer_id=$1 AND purpose=\'registration\' AND email=$2 AND consumed_at IS NULL AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1',[customerId,email])).rows[0];
     if(!challenge)return res.status(400).json({error:'Le code a expiré. Demandez un nouveau code.'});
     const valid=crypto.timingSafeEqual(Buffer.from(hashVerificationCode(code)),Buffer.from(challenge.code_hash));
     if(!valid)return res.status(400).json({error:'Code incorrect ou expiré.'});
@@ -279,11 +279,11 @@ app.post('/api/customer/resend-registration', customerAuthLimiter, async(req,res
     const c=(await pool.query('SELECT id,name,email,email_verified_at,active FROM customers WHERE id=$1',[customerId])).rows[0];
     if(!c||c.email!==email)return res.status(404).json({error:'Inscription introuvable.'});
     if(c.email_verified_at)return res.status(409).json({error:'Cette adresse e-mail est déjà vérifiée.'});
-    const recent=(await pool.query('SELECT created_at FROM customer_email_verifications WHERE customer_id=$1 AND purpose=\\'registration\\' ORDER BY created_at DESC LIMIT 1',[customerId])).rows[0];
+    const recent=(await pool.query('SELECT created_at FROM customer_email_verifications WHERE customer_id=$1 AND purpose=\'registration\' ORDER BY created_at DESC LIMIT 1',[customerId])).rows[0];
     if(recent&&Date.now()-new Date(recent.created_at).getTime()<30000)return res.status(429).json({error:'Attendez quelques secondes avant de demander un nouveau code.'});
     const code=randomVerificationCode();
-    await pool.query('UPDATE customer_email_verifications SET consumed_at=NOW() WHERE customer_id=$1 AND purpose=\\'registration\\' AND consumed_at IS NULL',[customerId]);
-    await pool.query('INSERT INTO customer_email_verifications(customer_id,purpose,email,code_hash,expires_at) VALUES($1,\\'registration\\',$2,$3,NOW()+INTERVAL \\'10 minutes\\')',[customerId,email,hashVerificationCode(code)]);
+    await pool.query('UPDATE customer_email_verifications SET consumed_at=NOW() WHERE customer_id=$1 AND purpose=\'registration\' AND consumed_at IS NULL',[customerId]);
+    await pool.query('INSERT INTO customer_email_verifications(customer_id,purpose,email,code_hash,expires_at) VALUES($1,\'registration\',$2,$3,NOW()+INTERVAL \'10 minutes\')',[customerId,email,hashVerificationCode(code)]);
     await sendEmail({to:email,subject:'NEXORA GROUP — Nouveau code de vérification',html:'<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>NEXORA GROUP</h2><p>Bonjour '+escapeHtml(c.name)+',</p><p>Votre nouveau code est :</p><p style="font-size:32px;font-weight:700;letter-spacing:8px">'+code+'</p><p>Ce code expire dans 10 minutes.</p></div>'});
     res.json({message:'Un nouveau code a été envoyé par e-mail.'});
   }catch(e){res.status(e.statusCode||500).json({error:e.statusCode===503?e.message:'Impossible d’envoyer le code.'});}
@@ -312,11 +312,11 @@ app.post('/api/customer/password-reset/request', customerAuthLimiter, async(req,
     if(!validEmail(email))return res.status(400).json({error:'Adresse e-mail invalide.'});
     const c=(await pool.query('SELECT id,name,email,active FROM customers WHERE email=$1 LIMIT 1',[email])).rows[0];
     if(!c||!c.active)return res.json({message:'Si cette adresse existe, un code de réinitialisation a été envoyé.'});
-    const recent=(await pool.query('SELECT created_at FROM customer_email_verifications WHERE customer_id=$1 AND purpose=\\'reset\\' ORDER BY created_at DESC LIMIT 1',[c.id])).rows[0];
+    const recent=(await pool.query('SELECT created_at FROM customer_email_verifications WHERE customer_id=$1 AND purpose=\'reset\' ORDER BY created_at DESC LIMIT 1',[c.id])).rows[0];
     if(recent&&Date.now()-new Date(recent.created_at).getTime()<30000)return res.status(429).json({error:'Attendez quelques secondes avant de demander un nouveau code.'});
     const code=randomVerificationCode();
-    await pool.query('UPDATE customer_email_verifications SET consumed_at=NOW() WHERE customer_id=$1 AND purpose=\\'reset\\' AND consumed_at IS NULL',[c.id]);
-    await pool.query('INSERT INTO customer_email_verifications(customer_id,purpose,email,code_hash,expires_at) VALUES($1,\\'reset\\',$2,$3,NOW()+INTERVAL \\'10 minutes\\')',[c.id,email,hashVerificationCode(code)]);
+    await pool.query('UPDATE customer_email_verifications SET consumed_at=NOW() WHERE customer_id=$1 AND purpose=\'reset\' AND consumed_at IS NULL',[c.id]);
+    await pool.query('INSERT INTO customer_email_verifications(customer_id,purpose,email,code_hash,expires_at) VALUES($1,\'reset\',$2,$3,NOW()+INTERVAL \'10 minutes\')',[c.id,email,hashVerificationCode(code)]);
     await sendEmail({to:email,subject:'NEXORA GROUP — Réinitialisation du mot de passe',html:'<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>NEXORA GROUP</h2><p>Bonjour '+escapeHtml(c.name)+',</p><p>Votre code de réinitialisation est :</p><p style="font-size:32px;font-weight:700;letter-spacing:8px">'+code+'</p><p>Ce code expire dans 10 minutes.</p><p>Si vous n’avez pas demandé cette réinitialisation, ignorez cet e-mail.</p></div>'});
     res.json({message:'Si cette adresse existe, un code de réinitialisation a été envoyé.'});
   }catch(e){res.status(e.statusCode||500).json({error:e.statusCode===503?e.message:'Impossible d’envoyer le code.'});}
@@ -329,7 +329,7 @@ app.post('/api/customer/password-reset/confirm', customerAuthLimiter, async(req,
     if(!validEmail(email)||!/^[0-9]{6}$/.test(code)||newPassword.length<12||newPassword.length>200)return res.status(400).json({error:'E-mail, code ou nouveau mot de passe invalide.'});
     const c=(await pool.query('SELECT id,name,email,active FROM customers WHERE email=$1 LIMIT 1',[email])).rows[0];
     if(!c||!c.active)return res.status(400).json({error:'Code incorrect ou expiré.'});
-    const challenge=(await pool.query('SELECT id,code_hash FROM customer_email_verifications WHERE customer_id=$1 AND purpose=\\'reset\\' AND email=$2 AND consumed_at IS NULL AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1',[c.id,email])).rows[0];
+    const challenge=(await pool.query('SELECT id,code_hash FROM customer_email_verifications WHERE customer_id=$1 AND purpose=\'reset\' AND email=$2 AND consumed_at IS NULL AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1',[c.id,email])).rows[0];
     if(!challenge)return res.status(400).json({error:'Le code a expiré. Demandez-en un nouveau.'});
     const valid=crypto.timingSafeEqual(Buffer.from(hashVerificationCode(code)),Buffer.from(challenge.code_hash));
     if(!valid)return res.status(400).json({error:'Code incorrect ou expiré.'});
