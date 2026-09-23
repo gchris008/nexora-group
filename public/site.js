@@ -51,7 +51,7 @@ function closeAccount(){const d=document.getElementById('accountDrawer');if(!d)r
 async function updateAccountNav(){
   const el=document.getElementById('accountLinks');if(!el)return;
   try{const r=await fetch('/api/customer/me',{credentials:'same-origin'});if(r.ok){const d=await r.json();if(d?.customer){el.innerHTML='<a class="account-primary" href="#compte" data-account-open>Compte</a>';return;}}}catch{}
-  el.innerHTML='<a href="#compte" data-account-open>Connexion / Inscription</a>';
+  el.innerHTML='<a href="/connexion">Connexion</a><span aria-hidden="true"> / </span><a href="/inscription">Inscription</a>';
 }
 
 const pageData={
