@@ -1,3 +1,4 @@
+const themeKey='nexora_theme';const applyTheme=()=>{const t=localStorage.getItem(themeKey)||'dark';document.documentElement.dataset.theme=t;document.querySelectorAll('[data-theme-toggle]').forEach(b=>b.textContent=t==='dark'?'☼ / ☾':'☾ / ☼');};applyTheme();document.querySelector('[data-theme-toggle]')?.addEventListener('click',()=>{localStorage.setItem(themeKey,(localStorage.getItem(themeKey)||'dark')==='dark'?'light':'dark');applyTheme();});
 const form=document.getElementById('register');
 const verificationBox=document.getElementById('verificationBox');
 const verificationForm=document.getElementById('verificationForm');
@@ -42,4 +43,3 @@ document.getElementById('resendCode').addEventListener('click',async()=>{
  if(!pending)return;const msg=document.getElementById('verificationMsg');msg.textContent='Envoi…';
  try{const r=await fetch('/api/customer/resend-registration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_id:pending.customerId,phone:pending.phone})});const d=await r.json();msg.textContent=d.message||d.error||'Demande terminée.';}catch{msg.textContent='Impossible de contacter le serveur.';}
 });
-document.querySelector('[data-theme-toggle]')?.addEventListener('click',()=>window.NexoraTheme?.toggle());
