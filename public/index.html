@@ -2,56 +2,41 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" type="image/webp" href="/favicon.webp?v=1"><link rel="apple-touch-icon" href="/favicon.webp?v=1">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/webp" href="/favicon.webp?v=1">
+<link rel="apple-touch-icon" href="/favicon.webp?v=1">
 <title>NEXORA GROUP</title>
-<meta name="description" content="NEXORA GROUP — commerce, distribution et technologie.">
+<meta name="description" content="NEXORA GROUP — commerce, distribution, technologie et expansion internationale.">
 <link rel="stylesheet" href="/site.css">
 </head>
 <body>
 <header>
   <div class="wrap nav">
-    <a class="brand" href="/"><img class="brand-logo" src="/nexora-logo.webp?v=4" alt="NEXORA GROUP"></a><button class="theme-toggle" type="button" data-theme-toggle aria-label="Changer de thème">☼ / ☾</button>
+    <a class="brand" href="/" data-route="home"><img class="brand-logo" src="/nexora-logo.webp?v=4" alt="NEXORA GROUP"></a>
+    <button class="theme-toggle" type="button" data-theme-toggle aria-label="Changer de thème">☼ / ☾</button>
     <nav>
-      <a href="#commerce">Commerce</a><a href="#distribution">Distribution</a><a href="#technology">Technologie</a><a href="#international">International</a><a href="#contact">Contact</a>
+      <a href="/commerce" data-route="commerce">Commerce</a>
+      <a href="/distribution" data-route="distribution">Distribution</a>
+      <a href="/technologie" data-route="technologie">Technologie</a>
+      <a href="/international" data-route="international">International</a>
+      <a href="#contact" data-contact-link>Contact</a>
+      <a href="/partenaires" data-route="partenaires">Partenaires</a>
       <a id="cartLink" class="cart-link" href="/checkout">Panier (0)</a>
-      <div id="accountLinks" class="account-links"><a href="/connexion">Connexion</a><a class="account-primary" href="/inscription">Créer un compte</a></div>
+      <div id="accountLinks" class="account-links"><a href="/connexion">Connexion</a></div>
     </nav>
   </div>
 </header>
-<main>
-<section class="hero"><div class="hero-glow hero-glow-one"></div><div class="hero-glow hero-glow-two"></div><div class="wrap hero-content">
-  <div class="hero-copy"><p class="eyebrow">NEXORA GROUP • GLOBAL COMMERCE</p>
-  <h1 id="tagline">L’infrastructure mondiale du commerce intelligent.</h1>
-  <p id="heroText">Commerce, distribution et technologie réunis dans une plateforme pensée pour l’expansion internationale.</p>
-  <div class="actions"><a class="btn gold" href="#catalogue">Découvrir NEXORA</a><a class="btn" href="#contact">Nous contacter</a></div></div>
-  <div class="hero-panel"><span>01</span><strong>COMMERCE</strong><p>Une plateforme conçue pour connecter produits, clients et opérations.</p><div class="hero-line"></div><small>Commerce · Distribution · Technologie</small></div>
-</div></section>
 
-<section class="wrap intro-section"><div><p class="eyebrow">UN GROUPE. PLUSIEURS ACTIVITÉS.</p><h2>Construire, distribuer et développer.</h2></div><p>NEXORA réunit commerce, distribution et technologie dans une même vision internationale.</p></section>
+<main id="appView"></main>
 
-<section class="wrap grid business-grid">
-  <article id="commerce"><b>01</b><h2>Commerce & E-commerce</h2><p>Une plateforme commerciale moderne pour vendre, présenter et développer des offres sur plusieurs marchés.</p></article>
-  <article id="distribution"><b>02</b><h2>Import / Export</h2><p>Sourcing, distribution et développement de flux commerciaux internationaux.</p></article>
-  <article id="technology"><b>03</b><h2>Technologie</h2><p>Applications, services numériques et outils conçus pour accompagner la croissance du groupe.</p></article>
-  <article id="international"><b>04</b><h2>Expansion internationale</h2><p>Une architecture pensée pour plusieurs pays, devises et opérations.</p></article>
-</section>
+<button id="floatingCart" class="floating-cart" type="button" aria-label="Ouvrir le panier"><span>🛒</span><b id="floatingCartCount">0</b></button>
+<aside id="cartDrawer" class="cart-drawer" aria-hidden="true">
+  <div class="cart-drawer-head"><div><span class="eyebrow">PANIER</span><h2>Votre panier</h2></div><button id="closeCart" class="drawer-close" type="button" aria-label="Fermer">×</button></div>
+  <div id="drawerCartItems" class="drawer-cart-items"></div>
+  <div class="drawer-cart-foot"><div class="cart-total"><span>Total</span><strong id="drawerCartTotal">0.00</strong></div><a class="btn gold" href="/checkout">Voir le panier et commander</a></div>
+</aside>
+<div id="cartBackdrop" class="cart-backdrop" hidden></div>
 
-<section id="catalogue" class="wrap contact catalogue-section">
-  <p class="eyebrow">CATALOGUE</p>
-  <div class="section-heading"><div><h2>Produits disponibles</h2><p>Consultez les produits, leur disponibilité et ajoutez-les directement au panier.</p></div><a class="btn" href="/checkout">Ouvrir le panier</a></div>
-  <div id="catalogueList" class="product-grid"></div>
-</section>
-
-<section class="security"><div class="wrap">
-  <p class="eyebrow">NEXORA SECURITY</p><h2>Une plateforme conçue avec la sécurité côté serveur.</h2>
-  <p>Authentification, sessions sécurisées, contrôle des rôles, validation des données, protection CSRF, limitation des tentatives et en-têtes de sécurité.</p>
-</div></section>
-
-<section id="contact" class="wrap contact">
-  <p class="eyebrow">CONTACT</p><h2>Parlons de votre projet.</h2>
-  <form id="contactForm"><input id="name" maxlength="80" placeholder="Nom" required><input id="email" type="email" maxlength="160" placeholder="E-mail" required><textarea id="message" maxlength="2000" placeholder="Votre projet" required></textarea><button class="btn gold">Envoyer</button><p id="status" role="status"></p></form>
-</section>
-<button id="floatingCart" class="floating-cart" type="button" aria-label="Ouvrir le panier"><span>🛒</span><b id="floatingCartCount">0</b></button><aside id="cartDrawer" class="cart-drawer" aria-hidden="true"><div class="cart-drawer-head"><div><span class="eyebrow">PANIER</span><h2>Votre panier</h2></div><button id="closeCart" class="drawer-close" type="button" aria-label="Fermer">×</button></div><div id="drawerCartItems" class="drawer-cart-items"></div><div class="drawer-cart-foot"><div class="cart-total"><span>Total</span><strong id="drawerCartTotal">0.00</strong></div><a class="btn gold" href="/checkout">Voir le panier et commander</a></div></aside><div id="cartBackdrop" class="cart-backdrop" hidden></div></main>
 <footer><div class="wrap"><img class="footer-logo" src="/nexora-logo.webp?v=4" alt="NEXORA GROUP"><span>© 2026 — Tous droits réservés.</span></div></footer>
 <script src="/site.js"></script>
 </body>
