@@ -3,3 +3,12 @@
 .brand{min-width:0}.brand-logo{display:block;width:auto;height:auto;max-width:190px;max-height:62px;object-fit:contain;object-position:left center;flex:0 0 auto}.footer-logo{display:block;width:auto;height:auto;max-width:175px;max-height:58px;object-fit:contain}.nav{min-height:88px}.nav .brand{line-height:0}.nav nav{min-width:0}.product-image{object-fit:contain;padding:10px;background:#0b0c0e}
 @media(max-width:1000px){.brand-logo{max-width:165px;max-height:56px}.nav{min-height:76px}}
 @media(max-width:750px){.brand-logo{max-width:145px;max-height:50px}.nav{min-height:0;padding:12px 0}.nav nav{width:100%}.footer-logo{max-width:155px;max-height:52px}}
+
+/* NEXORA header branding — compact, sharp and aligned with navigation */
+.nav{display:flex;align-items:center;gap:28px}
+.nav .brand{display:flex;align-items:center;flex:0 0 auto;width:112px;height:64px;overflow:visible}
+.nav .brand-logo{width:112px;height:64px;max-width:none;max-height:none;object-fit:contain;object-position:center;display:block}
+.nav nav{flex:1;min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:18px}
+footer .footer-logo{width:120px;height:70px;max-width:none;max-height:none;object-fit:contain;object-position:left center}
+@media(max-width:1000px){.nav{gap:16px}.nav .brand{width:100px;height:58px}.nav .brand-logo{width:100px;height:58px}.nav nav{gap:10px}}
+@media(max-width:750px){.nav{display:grid;grid-template-columns:1fr;gap:10px}.nav .brand{width:105px;height:58px}.nav .brand-logo{width:105px;height:58px}.nav nav{width:100%;justify-content:flex-start}.footer-logo{width:105px;height:62px}}
