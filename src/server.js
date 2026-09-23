@@ -395,28 +395,47 @@ app.post('/api/customer/profile/request-verification', customerAuth, customerAut
     if(emailOwner)return res.status(409).json({error:'Cette adresse e-mail est déjà utilisée.'});
     const usernameOwner=(await pool.query('SELECT id FROM customers WHERE LOWER(username)=LOWER($1) AND id<>$2 LIMIT 1',[username,req.customer.customer_id])).rows[0];
     if(usernameOwner)return res.status(409).json({error:'Ce nom d’utilisateur est déjà utilisé.'});
+    const emailChanged=email!==req.customer.email;
     const purpose=phone===current.phone?'profile':'new_phone';
     const targetPhone=purpose==='profile'?current.phone:phone;
     const recent=(await pool.query('SELECT created_at FROM customer_verification_challenges WHERE customer_id=$1 AND purpose=$2 AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1',[req.customer.customer_id,purpose])).rows[0];
     if(recent && Date.now()-new Date(recent.created_at).getTime()<30000)return res.status(429).json({error:'Attendez quelques secondes avant de demander un nouveau code.'});
     const verification=await startPhoneVerification(targetPhone);
     await pool.query('UPDATE customer_verification_challenges SET consumed_at=NOW() WHERE customer_id=$1 AND purpose=$2 AND consumed_at IS NULL',[req.customer.customer_id,purpose]);
-    const payload={name,username,email,phone,address,city};
+    const payload={name,username,email,phone,address,city,emailChanged};
     await pool.query('INSERT INTO customer_verification_challenges(customer_id,purpose,phone,verification_sid,payload,expires_at) VALUES($1,$2,$3,$4,$5,NOW()+INTERVAL \'10 minutes\')',[req.customer.customer_id,purpose,targetPhone,verification.sid,JSON.stringify(payload)]);
-    res.json({verificationRequired:true,purpose,targetPhone,phoneMasked:maskPhone(targetPhone),message:purpose==='profile'?'Un code a été envoyé à votre numéro actuel.':'Un code a été envoyé au nouveau numéro.'});
+    if(emailChanged){
+      const emailCode=randomVerificationCode();
+      await pool.query("UPDATE customer_email_verifications SET consumed_at=NOW() WHERE customer_id=$1 AND purpose='profile' AND consumed_at IS NULL",[req.customer.customer_id]);
+      await pool.query("INSERT INTO customer_email_verifications(customer_id,purpose,email,code_hash,expires_at) VALUES($1,'profile',$2,$3,NOW()+INTERVAL '10 minutes')",[req.customer.customer_id,email,hashVerificationCode(emailCode)]);
+      try{
+        await sendEmail({to:email,subject:'NEXORA GROUP — Confirmation de votre nouvelle adresse e-mail',html:'<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>NEXORA GROUP</h2><p>Vous avez demandé à modifier l’adresse e-mail de votre compte.</p><p>Votre code de confirmation :</p><p style="font-size:32px;font-weight:700;letter-spacing:8px">'+emailCode+'</p><p>Ce code expire dans 10 minutes.</p></div>'});
+      }catch(e){
+        await pool.query("DELETE FROM customer_email_verifications WHERE customer_id=$1 AND purpose='profile' AND email=$2",[req.customer.customer_id,email]).catch(()=>{});
+        await pool.query('DELETE FROM customer_verification_challenges WHERE customer_id=$1 AND purpose=$2 AND phone=$3 AND consumed_at IS NULL',[req.customer.customer_id,purpose,targetPhone]).catch(()=>{});
+        throw e;
+      }
+    }
+    res.json({verificationRequired:true,purpose,targetPhone,phoneMasked:maskPhone(targetPhone),emailVerificationRequired:emailChanged,emailMasked:emailChanged?email.replace(/^(.{2}).*(@.*)$/,'$1••••$2'):null,message:emailChanged?'Un code a été envoyé à votre numéro et un second code à votre nouvelle adresse e-mail.':'Un code a été envoyé à votre numéro actuel.'});
   }catch(e){res.status(e.statusCode||500).json({error:e.statusCode===429?'Trop de demandes de SMS. Réessayez plus tard.':e.statusCode===503?e.message:'Impossible de lancer la vérification du profil.'});}
 });
 
 app.post('/api/customer/profile/verify', customerAuth, customerAuthLimiter, async(req,res,next)=>{
   try{
     await ensureCustomerAuthSchema();
-    const code=safeText(req.body.code,10),purpose=safeText(req.body.purpose,20),targetPhone=normalizePhone(req.body.phone);
-    if(!['profile','new_phone'].includes(purpose)||!/^[0-9]{4,10}$/.test(code)||!validPhone(targetPhone))return res.status(400).json({error:'Code de vérification invalide.'});
+    const phoneCode=safeText(req.body.phoneCode||req.body.code,10),emailCode=safeText(req.body.emailCode,10),purpose=safeText(req.body.purpose,20),targetPhone=normalizePhone(req.body.phone);
+    if(!['profile','new_phone'].includes(purpose)||!/^[0-9]{4,10}$/.test(phoneCode)||!validPhone(targetPhone))return res.status(400).json({error:'Code de vérification invalide.'});
     const challenge=(await pool.query('SELECT id,phone,payload FROM customer_verification_challenges WHERE customer_id=$1 AND purpose=$2 AND phone=$3 AND consumed_at IS NULL AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1',[req.customer.customer_id,purpose,targetPhone])).rows[0];
     if(!challenge||!challenge.payload)return res.status(400).json({error:'La demande de modification a expiré. Recommencez.'});
-    const check=await checkPhoneVerification(targetPhone,code);
-    if(check.status!=='approved')return res.status(400).json({error:'Code incorrect ou expiré.'});
+    const check=await checkPhoneVerification(targetPhone,phoneCode);
+    if(check.status!=='approved')return res.status(400).json({error:'Code téléphone incorrect ou expiré.'});
     const p=challenge.payload;
+    if(p.emailChanged){
+      if(!/^[0-9]{6}$/.test(emailCode))return res.status(400).json({error:'Le code de confirmation e-mail est requis.'});
+      const ev=(await pool.query("SELECT id,code_hash FROM customer_email_verifications WHERE customer_id=$1 AND purpose='profile' AND email=$2 AND consumed_at IS NULL AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1",[req.customer.customer_id,p.email])).rows[0];
+      if(!ev || !crypto.timingSafeEqual(Buffer.from(hashVerificationCode(emailCode)),Buffer.from(ev.code_hash)))return res.status(400).json({error:'Code e-mail incorrect ou expiré.'});
+      await pool.query('UPDATE customer_email_verifications SET consumed_at=NOW() WHERE id=$1',[ev.id]);
+    }
     if(!validName(p.name)||!validUsername(p.username)||!validEmail(p.email)||!validPhone(p.phone)||!p.address||!p.city)return res.status(400).json({error:'Modification de profil invalide.'});
     if(p.phone!==req.customer.phone){
       await pool.query('UPDATE customers SET name=$1,username=$2,email=$3,phone=$4,address=$5,city=$6,phone_verified_at=NOW(),updated_at=NOW() WHERE id=$7',[p.name,p.username,p.email,p.phone,p.address,p.city,req.customer.customer_id]);
