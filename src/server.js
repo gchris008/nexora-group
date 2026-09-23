@@ -137,9 +137,9 @@ app.post('/api/orders', async (req,res,next)=>{
   const client=await pool.connect();
   try {
     const name=safeText(req.body.customer?.name,120), email=safeText(req.body.customer?.email,160).toLowerCase();
-    const phone=safeText(req.body.customer?.phone,40), address=safeText(req.body.customer?.address,240), city=safeText(req.body.customer?.city,120), country=safeText(req.body.customer?.country,120);
+    const phone=normalizePhone(req.body.customer?.phone), address=safeText(req.body.customer?.address,240), city=safeText(req.body.customer?.city,120);
     const items=Array.isArray(req.body.items)?req.body.items.slice(0,50):[];
-    if(!validName(name)||!validEmail(email)||!address||!city||!country||!items.length) return res.status(400).json({error:'Informations de commande invalides.'});
+    if(!validName(name)||!validEmail(email)||!validPhone(phone)||!address||!city||!items.length) return res.status(400).json({error:'Informations de commande invalides.'});
     const ids=[...new Set(items.map(x=>Number(x.product_id)).filter(Number.isInteger))];
     if(!ids.length)return res.status(400).json({error:'Panier invalide.'});
     await client.query('BEGIN');
@@ -148,7 +148,7 @@ app.post('/api/orders', async (req,res,next)=>{
     let total=0,currency=null,lines=[];
     for(const item of items){const id=Number(item.product_id),qty=Number(item.quantity),p=map.get(id);if(!p||!Number.isInteger(qty)||qty<1||qty>99)throw Object.assign(new Error('Panier invalide.'),{statusCode:400});if(qty>p.stock_quantity)throw Object.assign(new Error(`Stock insuffisant pour ${p.name}.`),{statusCode:409});if(currency&&currency!==p.currency)throw Object.assign(new Error('Les produits doivent utiliser la même devise.'),{statusCode:400});currency=p.currency;const line=p.price_cents*qty;total+=line;lines.push({p,qty,line});}
     if(total>2147483647)throw Object.assign(new Error('Commande trop élevée.'),{statusCode:400});
-    const customer=(await client.query('INSERT INTO customers(name,email,phone,address,city,country) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,phone=EXCLUDED.phone,address=EXCLUDED.address,city=EXCLUDED.city,country=EXCLUDED.country,updated_at=NOW() RETURNING id',[name,email,phone,address,city,country])).rows[0];
+    const customer=(await client.query('INSERT INTO customers(name,email,phone,address,city) VALUES($1,$2,$3,$4,$5) ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,phone=EXCLUDED.phone,address=EXCLUDED.address,city=EXCLUDED.city,updated_at=NOW() RETURNING id',[name,email,phone,address,city])).rows[0];
     const order=(await client.query('INSERT INTO orders(customer_id,currency,total_cents) VALUES($1,$2,$3) RETURNING id,status,total_cents,currency,created_at',[customer.id,currency,total])).rows[0];
     for(const l of lines){await client.query('UPDATE products SET stock_quantity=stock_quantity-$1,updated_at=NOW() WHERE id=$2',[l.qty,l.p.id]);await client.query('INSERT INTO order_items(order_id,product_id,product_name,unit_price_cents,quantity,line_total_cents) VALUES($1,$2,$3,$4,$5,$6)',[order.id,l.p.id,l.p.name,l.p.price_cents,l.qty,l.line]);}
     await client.query('COMMIT');
@@ -359,8 +359,8 @@ app.post('/api/customer/profile/request-verification', customerAuth, customerAut
   try{
     await ensureCustomerAuthSchema();
     const currentPassword=typeof req.body.currentPassword==='string'?req.body.currentPassword:'';
-    const name=safeText(req.body.name,120),username=safeText(req.body.username,30).toLowerCase(),email=safeText(req.body.email,160).toLowerCase(),phone=normalizePhone(req.body.phone),address=safeText(req.body.address,240),city=safeText(req.body.city,120),country=safeText(req.body.country,120);
-    if(!validName(name)||!validUsername(username)||!validEmail(email)||!validPhone(phone)||!address||!city||!country)return res.status(400).json({error:'Les informations du profil sont invalides.'});
+    const name=safeText(req.body.name,120),username=safeText(req.body.username,30).toLowerCase(),email=safeText(req.body.email,160).toLowerCase(),phone=normalizePhone(req.body.phone),address=safeText(req.body.address,240),city=safeText(req.body.city,120);
+    if(!validName(name)||!validUsername(username)||!validEmail(email)||!validPhone(phone)||!address||!city)return res.status(400).json({error:'Les informations du profil sont invalides.'});
     const current=(await pool.query('SELECT password_hash,phone,phone_verified_at FROM customers WHERE id=$1',[req.customer.customer_id])).rows[0];
     if(!current||!current.phone_verified_at||!verifyPassword(currentPassword,current.password_hash))return res.status(401).json({error:'Mot de passe actuel incorrect ou numéro non vérifié.'});
     const emailOwner=(await pool.query('SELECT id FROM customers WHERE LOWER(email)=LOWER($1) AND id<>$2 LIMIT 1',[email,req.customer.customer_id])).rows[0];
@@ -373,7 +373,7 @@ app.post('/api/customer/profile/request-verification', customerAuth, customerAut
     if(recent && Date.now()-new Date(recent.created_at).getTime()<30000)return res.status(429).json({error:'Attendez quelques secondes avant de demander un nouveau code.'});
     const verification=await startPhoneVerification(targetPhone);
     await pool.query('UPDATE customer_verification_challenges SET consumed_at=NOW() WHERE customer_id=$1 AND purpose=$2 AND consumed_at IS NULL',[req.customer.customer_id,purpose]);
-    const payload={name,username,email,phone,address,city,country};
+    const payload={name,username,email,phone,address,city};
     await pool.query('INSERT INTO customer_verification_challenges(customer_id,purpose,phone,verification_sid,payload,expires_at) VALUES($1,$2,$3,$4,$5,NOW()+INTERVAL \'10 minutes\')',[req.customer.customer_id,purpose,targetPhone,verification.sid,JSON.stringify(payload)]);
     res.json({verificationRequired:true,purpose,targetPhone,phoneMasked:maskPhone(targetPhone),message:purpose==='profile'?'Un code a été envoyé à votre numéro actuel.':'Un code a été envoyé au nouveau numéro.'});
   }catch(e){res.status(e.statusCode||500).json({error:e.statusCode===429?'Trop de demandes de SMS. Réessayez plus tard.':e.statusCode===503?e.message:'Impossible de lancer la vérification du profil.'});}
@@ -389,11 +389,11 @@ app.post('/api/customer/profile/verify', customerAuth, customerAuthLimiter, asyn
     const check=await checkPhoneVerification(targetPhone,code);
     if(check.status!=='approved')return res.status(400).json({error:'Code incorrect ou expiré.'});
     const p=challenge.payload;
-    if(!validName(p.name)||!validUsername(p.username)||!validEmail(p.email)||!validPhone(p.phone))return res.status(400).json({error:'Modification de profil invalide.'});
+    if(!validName(p.name)||!validUsername(p.username)||!validEmail(p.email)||!validPhone(p.phone)||!p.address||!p.city)return res.status(400).json({error:'Modification de profil invalide.'});
     if(p.phone!==req.customer.phone){
-      await pool.query('UPDATE customers SET name=$1,username=$2,email=$3,phone=$4,address=$5,city=$6,country=$7,phone_verified_at=NOW(),updated_at=NOW() WHERE id=$8',[p.name,p.username,p.email,p.phone,p.address,p.city,p.country,req.customer.customer_id]);
+      await pool.query('UPDATE customers SET name=$1,username=$2,email=$3,phone=$4,address=$5,city=$6,phone_verified_at=NOW(),updated_at=NOW() WHERE id=$7',[p.name,p.username,p.email,p.phone,p.address,p.city,req.customer.customer_id]);
     }else{
-      await pool.query('UPDATE customers SET name=$1,username=$2,email=$3,address=$4,city=$5,country=$6,updated_at=NOW() WHERE id=$7',[p.name,p.username,p.email,p.address,p.city,p.country,req.customer.customer_id]);
+      await pool.query('UPDATE customers SET name=$1,username=$2,email=$3,address=$4,city=$5,updated_at=NOW() WHERE id=$6',[p.name,p.username,p.email,p.address,p.city,req.customer.customer_id]);
     }
     await pool.query('UPDATE customer_verification_challenges SET consumed_at=NOW() WHERE id=$1',[challenge.id]);
     const c=(await pool.query('SELECT id,name,username,email,phone,phone_verified_at,address,city,country,balance_cents,active FROM customers WHERE id=$1',[req.customer.customer_id])).rows[0];
