@@ -63,7 +63,7 @@ function safeText(value, max) {
 }
 function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
 function normalizePhone(value) { return safeText(value, 30).replace(/[\s().-]/g, ''); }
-function validPhone(value) { return /^\+[1-9]\d{7,14}$/.test(value); }
+function validPhone(value) { return /^\+509\d{8}$/.test(value); }
 function maskPhone(value) { const v=String(value||''); return v.length<=6 ? v : v.slice(0,4)+' •••• •••• '+v.slice(-2); }
 function validName(value) { return /^[\p{L}]+(?:[ '\u2019-][\p{L}]+){1,5}$/u.test(value); }
 function validUsername(value) { return /^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{2,29})$/.test(value); }
@@ -93,6 +93,20 @@ function verifyPassword(password, encoded) {
   if (scheme !== 'scrypt') return false;
   const derived = crypto.scryptSync(password, Buffer.from(saltB64, 'base64url'), 64, { N:Number(N), r:Number(r), p:Number(p) });
   return crypto.timingSafeEqual(derived, Buffer.from(keyB64, 'base64url'));
+}
+
+let adminSchemaReady=null;
+async function ensureAdminSchema(){
+  if(!pool)return;
+  if(!adminSchemaReady){
+    adminSchemaReady=(async()=>{
+      await pool.query("CREATE TABLE IF NOT EXISTS admins (id BIGSERIAL PRIMARY KEY,email TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin','editor','manager')),created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),last_login_at TIMESTAMPTZ)");
+      await pool.query("CREATE TABLE IF NOT EXISTS sessions (id BIGSERIAL PRIMARY KEY,token_hash TEXT UNIQUE NOT NULL,admin_id BIGINT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,csrf_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+      await pool.query("CREATE INDEX IF NOT EXISTS sessions_token_hash_idx ON sessions(token_hash)");
+      return true;
+    })().catch(e=>{adminSchemaReady=null;throw e;});
+  }
+  await adminSchemaReady;
 }
 
 async function auth(req, res, next) {
@@ -489,10 +503,13 @@ app.get('/api/customer/orders',customerAuth,async(req,res,next)=>{
 
 app.post('/api/admin/login', loginLimiter, async (req,res,next)=>{
   try {
+    if(!pool)return res.status(503).json({error:'La base de données n’est pas configurée.'});
+    await ensureAdminSchema();
     const email=safeText(req.body.email,160).toLowerCase(), password=typeof req.body.password==='string'?req.body.password:'';
     if(!validEmail(email) || password.length<12) return res.status(400).json({error:'Identifiants invalides.'});
     const r=await pool.query('SELECT id,email,password_hash,role FROM admins WHERE email=$1',[email]);
-    if(!r.rowCount || !verifyPassword(password,r.rows[0].password_hash)) return res.status(401).json({error:'E-mail ou mot de passe incorrect.'});
+    if(!r.rowCount) return res.status(401).json({error:'Administrateur introuvable dans cette base de données. Créez l’administrateur sur la même base Neon utilisée par Vercel.'});
+    if(!verifyPassword(password,r.rows[0].password_hash)) return res.status(401).json({error:'E-mail ou mot de passe incorrect.'});
     const raw=randomToken(), csrfToken=randomToken(), expires=new Date(Date.now()+sessionHours*3600000);
     await pool.query('INSERT INTO sessions(token_hash,admin_id,csrf_hash,expires_at) VALUES($1,$2,$3,$4)',[sha256(raw),r.rows[0].id,sha256(csrfToken),expires]);
     await pool.query('UPDATE admins SET last_login_at=NOW() WHERE id=$1',[r.rows[0].id]);
