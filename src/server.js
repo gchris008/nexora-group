@@ -518,15 +518,42 @@ app.get('/api/admin/audit',auth,requireRole('admin'),async(req,res,next)=>{
   try { const r=await pool.query('SELECT id,action,entity,entity_id,ip_address,created_at FROM audit_logs ORDER BY created_at DESC LIMIT 200'); res.json(r.rows); } catch(e){next(e);}
 });
 
+app.get('/api/admin/dashboard',auth,requireRole('admin','manager','editor'),async(req,res,next)=>{
+  try{
+    const r=await pool.query(`SELECT
+      (SELECT COUNT(*)::int FROM customers) AS customers_total,
+      (SELECT COUNT(*)::int FROM customers WHERE active=TRUE) AS customers_active,
+      (SELECT COUNT(*)::int FROM admins) AS admin_users,
+      (SELECT COUNT(*)::int FROM orders) AS orders_total,
+      (SELECT COUNT(*)::int FROM payments) AS payments_total`);
+    res.json(r.rows[0]);
+  }catch(e){next(e);}
+});
 app.get('/api/admin/customers',auth,requireRole('admin','manager','editor'),async(req,res,next)=>{
   try{
-    const r=await pool.query(`SELECT c.id,c.name,c.email,c.phone,c.phone_verified_at,c.country,c.active,c.balance_cents,c.created_at,
-      COUNT(o.id)::int AS order_count
-      FROM customers c LEFT JOIN orders o ON o.customer_id=c.id
+    const r=await pool.query(`SELECT c.id,c.name,c.username,c.email,c.phone,c.phone_verified_at,c.email_verified_at,c.active,c.balance_cents,c.created_at,c.updated_at,
+      COUNT(DISTINCT o.id)::int AS order_count, COUNT(DISTINCT p.id)::int AS payment_count
+      FROM customers c
+      LEFT JOIN orders o ON o.customer_id=c.id
+      LEFT JOIN payments p ON p.order_id=o.id
       GROUP BY c.id ORDER BY c.created_at DESC LIMIT 1000`);
     res.json(r.rows);
   }catch(e){next(e);}
 });
+app.get('/api/admin/customers/:id/history',auth,requireRole('admin','manager','editor'),async(req,res,next)=>{
+  try{
+    const id=Number(req.params.id); if(!Number.isInteger(id)) return res.status(400).json({error:'Client invalide.'});
+    const customer=(await pool.query('SELECT id,name,username,email,created_at,updated_at FROM customers WHERE id=$1',[id])).rows[0];
+    if(!customer)return res.status(404).json({error:'Client introuvable.'});
+    const orders=(await pool.query(`SELECT o.id,o.status,o.currency,o.total_cents,o.payment_status,o.payment_method,o.created_at,
+      COALESCE(json_agg(json_build_object('name',oi.product_name,'quantity',oi.quantity) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL),'[]') AS items
+      FROM orders o LEFT JOIN order_items oi ON oi.order_id=o.id
+      WHERE o.customer_id=$1 GROUP BY o.id ORDER BY o.created_at DESC LIMIT 500`,[id])).rows;
+    const payments=(await pool.query('SELECT p.id,p.order_id,p.method,p.provider,p.status,p.provider_reference,p.amount_cents,p.currency,p.created_at,p.updated_at FROM payments p JOIN orders o ON o.id=p.order_id WHERE o.customer_id=$1 ORDER BY p.created_at DESC LIMIT 500',[id])).rows;
+    res.json({customer,orders,payments});
+  }catch(e){next(e);}
+});
+
 app.put('/api/admin/customers/:id/status',auth,csrf,requireRole('admin','manager'),async(req,res,next)=>{
   try{
     const id=Number(req.params.id), active=parseBoolean(req.body.active);
