@@ -1,3 +1,4 @@
+const themeKey='nexora_theme';const applyTheme=()=>{const t=localStorage.getItem(themeKey)||'dark';document.documentElement.dataset.theme=t;document.querySelectorAll('[data-theme-toggle]').forEach(b=>b.textContent=t==='dark'?'☼ / ☾':'☾ / ☼');};applyTheme();document.querySelectorAll('[data-theme-toggle]').forEach(x=>x.addEventListener('click',()=>{localStorage.setItem(themeKey,(localStorage.getItem(themeKey)||'dark')==='dark'?'light':'dark');applyTheme();}));
 const money=(c,currency)=>((Number(c)||0)/100).toFixed(2)+' '+currency;
 let currentCustomer=null;
 let pendingProfile=null;
@@ -7,6 +8,7 @@ function fillProfile(c){
  document.getElementById('identity').textContent=c.name+' · @'+c.username+' · '+c.email;
  document.getElementById('balance').textContent='Solde : '+money(c.balance_cents||0,'USD');
  document.getElementById('profileName').value=c.name||'';
+ document.getElementById('profileUsername').value=c.username||'';
  document.getElementById('profileEmail').value=c.email||'';
  document.getElementById('profilePhone').value=c.phone||'';
  document.getElementById('profileAddress').value=c.address||'';
@@ -35,5 +37,4 @@ document.getElementById('profileVerificationForm')?.addEventListener('submit',as
  try{const r=await fetch('/api/customer/profile/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({purpose:pendingProfile.purpose,phone:pendingProfile.targetPhone,code:profileCode.value.trim()})});const d=await r.json();if(!r.ok){msg.textContent=d.error||'Code incorrect.';return;}fillProfile(d.customer);profilePassword.value='';document.getElementById('profileVerification').hidden=true;msg.textContent='';document.getElementById('profileMsg').textContent='Profil mis à jour et vérifié.';}catch{msg.textContent='Impossible de contacter le serveur.';}
 });
 document.getElementById('logout')?.addEventListener('click',async()=>{await fetch('/api/customer/logout',{method:'POST'});location.href='/';});
-document.querySelectorAll('[data-theme-toggle]').forEach(x=>x.addEventListener('click',()=>window.NexoraTheme?.toggle()));
 load();
