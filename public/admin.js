@@ -35,7 +35,7 @@ async function loadCustomers(){
   const list=await api('/api/admin/customers');
   customers.innerHTML=list.map(c=>{
    const balance=(Number(c.balance_cents||0)/100).toFixed(2);
-   return '<div class="item customer-item"><strong>'+esc(c.name)+'</strong><span>'+esc(c.email)+' · '+esc(c.phone||'—')+' · '+esc(c.country||'—')+'</span><span>Solde: <b>'+balance+'</b> USD · Commandes: '+c.order_count+' · '+(c.active?'Actif':'Inactif')+'</span><div><button type="button" onclick="toggleCustomer('+c.id+','+(!c.active)+')">'+(c.active?'Désactiver':'Activer')+'</button> <button type="button" onclick="changeBalance('+c.id+','+Number(c.balance_cents||0)+')">Modifier le solde</button></div></div>';
+   return '<div class="item customer-item"><strong>'+esc(c.name)+'</strong><span>'+esc(c.email)+' · '+esc(c.phone||'—')+' · '+(c.phone_verified_at?'Téléphone vérifié':'Téléphone non vérifié')+' · '+esc(c.country||'—')+'</span><span>Solde: <b>'+balance+'</b> USD · Commandes: '+c.order_count+' · '+(c.active?'Actif':'Inactif')+'</span><div><button type="button" onclick="toggleCustomer('+c.id+','+(!c.active)+')">'+(c.active?'Désactiver':'Activer')+'</button> <button type="button" onclick="changeBalance('+c.id+','+Number(c.balance_cents||0)+')">Modifier le solde</button></div></div>';
   }).join('')||'<p>Aucun client.</p>';
  }catch(x){customers.textContent=x.message}
 }
