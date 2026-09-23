@@ -176,3 +176,23 @@ input,select,textarea{font-size:16px}
   .floating-cart{width:54px;height:54px;right:12px}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important}}
+
+
+/* NEXORA — centered page composition */
+.hero-content{grid-template-columns:minmax(0,900px);justify-content:center;text-align:center;gap:0}
+.hero-copy{display:flex;flex-direction:column;align-items:center;padding:90px 0}
+.hero h1{margin-left:auto;margin-right:auto}
+.hero p:not(.eyebrow){margin-left:auto;margin-right:auto}
+.actions{justify-content:center}
+.hero-panel{display:none}
+.intro-section{grid-template-columns:minmax(0,820px);justify-content:center;text-align:center;gap:18px}
+.intro-section>p{margin-left:auto;margin-right:auto}
+.section-heading{justify-content:center;text-align:center;display:grid;gap:6px}
+.section-heading p{margin-left:auto;margin-right:auto}
+.product-grid{max-width:1120px;margin-left:auto;margin-right:auto}
+.grid{max-width:1120px;margin-left:auto;margin-right:auto}
+.security .wrap,.contact .wrap{text-align:center}
+.security h2,.security p{margin-left:auto;margin-right:auto}
+.contact form{margin-left:auto;margin-right:auto;text-align:left}
+@media(max-width:900px){.hero-content{grid-template-columns:minmax(0,760px)}.hero-copy{padding:78px 0 70px}}
+@media(max-width:600px){.hero-copy{padding:62px 0 58px}.intro-section{padding-left:8px;padding-right:8px}.section-heading{text-align:center}.security .wrap,.contact .wrap{text-align:center}}
