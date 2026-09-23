@@ -160,6 +160,30 @@ const customerAuthLimiter = rateLimit({
   message: { error: 'Trop de tentatives. Réessayez plus tard.' }
 });
 
+let customerSchemaReady = null;
+async function ensureCustomerAuthSchema() {
+  if (!pool) return false;
+  if (!customerSchemaReady) {
+    customerSchemaReady = (async () => {
+      await pool.query("CREATE TABLE IF NOT EXISTS customers (id BIGSERIAL PRIMARY KEY,name TEXT NOT NULL,email TEXT UNIQUE NOT NULL,phone TEXT NOT NULL DEFAULT '',address TEXT NOT NULL DEFAULT '',city TEXT NOT NULL DEFAULT '',country TEXT NOT NULL DEFAULT '',created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+      await pool.query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_hash TEXT");
+      await pool.query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS username TEXT");
+      await pool.query("UPDATE customers SET username='client-' || id::text WHERE username IS NULL OR username=''");
+      await pool.query("ALTER TABLE customers ALTER COLUMN username SET NOT NULL");
+      await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS customers_username_unique_idx ON customers(LOWER(username))");
+      await pool.query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ");
+      await pool.query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE");
+      await pool.query("ALTER TABLE customers ADD COLUMN IF NOT EXISTS balance_cents BIGINT NOT NULL DEFAULT 0");
+      await pool.query("CREATE TABLE IF NOT EXISTS customer_sessions (id BIGSERIAL PRIMARY KEY,token_hash TEXT UNIQUE NOT NULL,customer_id BIGINT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,expires_at TIMESTAMPTZ NOT NULL,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+      await pool.query("CREATE INDEX IF NOT EXISTS customer_sessions_token_hash_idx ON customer_sessions(token_hash)");
+      await pool.query("CREATE INDEX IF NOT EXISTS customer_sessions_expires_at_idx ON customer_sessions(expires_at)");
+      return true;
+    })().catch(error => { customerSchemaReady = null; throw error; });
+  }
+  await customerSchemaReady;
+  return true;
+}
+
 async function customerAuth(req, res, next) {
   try {
     const raw = req.headers.cookie?.split(';').map(v => v.trim())
@@ -179,6 +203,8 @@ async function customerAuth(req, res, next) {
 
 app.post('/api/customer/register', customerAuthLimiter, async (req,res,next)=>{
   try {
+    if (!pool) return res.status(503).json({error:'Le service de création de compte n’est pas encore connecté à la base de données.'});
+    await ensureCustomerAuthSchema();
     const name=safeText(req.body.name,120), username=safeText(req.body.username,30).toLowerCase(), email=safeText(req.body.email,160).toLowerCase();
     const password=typeof req.body.password==='string'?req.body.password:'';
     if(!validName(name)||!validUsername(username)||!validEmail(email)||password.length<12||password.length>200)
@@ -202,7 +228,12 @@ app.post('/api/customer/register', customerAuthLimiter, async (req,res,next)=>{
     await pool.query('INSERT INTO customer_sessions(token_hash,customer_id,expires_at) VALUES($1,$2,$3)',[sha256(raw),r.rows[0].id,expires]);
     res.setHeader('Set-Cookie',`nexora_customer_session=${raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${sessionHours*3600}${isProd?'; Secure':''}`);
     res.status(201).json({customer:r.rows[0]});
-  } catch(e){next(e);}
+  } catch(e){
+    console.error('customer_register_error', { name:e?.name, code:e?.code, message:e?.message });
+    if (e?.code === '23505') return res.status(409).json({error:'Ce compte existe déjà. Utilisez la connexion ou récupérez votre mot de passe.'});
+    if (e?.code === '42P01' || e?.code === '42703') return res.status(503).json({error:'La base de données du compte client n’est pas encore prête.'});
+    next(e);
+  }
 });
 
 app.post('/api/customer/login', customerAuthLimiter, async(req,res,next)=>{
