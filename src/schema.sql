@@ -104,6 +104,10 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method TEXT;
 
 
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS username TEXT;
+UPDATE customers SET username = 'client-' || id::text WHERE username IS NULL OR username = '';
+ALTER TABLE customers ALTER COLUMN username SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS customers_username_unique_idx ON customers(LOWER(username));
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS active BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS balance_cents BIGINT NOT NULL DEFAULT 0;
