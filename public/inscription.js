@@ -21,25 +21,12 @@ form.addEventListener('submit',async e=>{
  e.preventDefault(); const msg=document.getElementById('msg');
  const ok=Object.keys(fields).map(validate).every(Boolean);
  if(!ok){msg.textContent='Veuillez corriger les champs indiqués.';return;}
- msg.textContent='Création du compte et envoi du code…';
+ msg.textContent='Création du compte…';
  try{
   const payload={name:fields.name.value.trim(),username:fields.username.value.trim(),email:fields.email.value.trim(),phone:fields.phone.value.replace(/[\s().-]/g,''),password:fields.password.value};
   const r=await fetch('/api/customer/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const d=await r.json(); if(!r.ok){msg.textContent=d.error||'Inscription impossible.';return;}
-  pending={customerId:d.customerId,email:d.email};
-  verificationBox.hidden=false; form.hidden=true;
-  document.getElementById('verificationText').textContent='Un code a été envoyé au '+d.email+'. Saisissez-le pour activer votre compte.';
-  document.getElementById('verificationCode').focus();
+  msg.textContent='Compte créé avec succès. Redirection…';
+  location.href='/compte';
  }catch{msg.textContent='Impossible de contacter le serveur.';}
-});
-verificationForm.addEventListener('submit',async e=>{
- e.preventDefault();const msg=document.getElementById('verificationMsg');msg.textContent='Vérification…';
- try{
-  const r=await fetch('/api/customer/verify-registration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_id:pending.customerId,email:pending.email,code:document.getElementById('verificationCode').value.trim()})});
-  const d=await r.json();if(!r.ok){msg.textContent=d.error||'Code incorrect.';return;}location.href='/compte';
- }catch{msg.textContent='Impossible de contacter le serveur.';}
-});
-document.getElementById('resendCode').addEventListener('click',async()=>{
- if(!pending)return;const msg=document.getElementById('verificationMsg');msg.textContent='Envoi…';
- try{const r=await fetch('/api/customer/resend-registration',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_id:pending.customerId,email:pending.email})});const d=await r.json();msg.textContent=d.message||d.error||'Demande terminée.';}catch{msg.textContent='Impossible de contacter le serveur.';}
 });
