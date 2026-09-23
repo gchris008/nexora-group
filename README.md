@@ -43,3 +43,4 @@ Utiliser HTTPS, une base PostgreSQL gérée, des sauvegardes, des variables d'en
 ## Vérifications
 
 `npm test` vérifie la syntaxe des fichiers JavaScript. La validation de production doit ensuite être effectuée avec PostgreSQL et un environnement HTTPS réel avant toute mise en ligne.
+
