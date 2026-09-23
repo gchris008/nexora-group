@@ -493,7 +493,7 @@ app.get('/api/admin/audit',auth,requireRole('admin'),async(req,res,next)=>{
 
 app.get('/api/admin/customers',auth,requireRole('admin','manager','editor'),async(req,res,next)=>{
   try{
-    const r=await pool.query(`SELECT c.id,c.name,c.email,c.phone,c.country,c.active,c.balance_cents,c.created_at,
+    const r=await pool.query(`SELECT c.id,c.name,c.email,c.phone,c.phone_verified_at,c.country,c.active,c.balance_cents,c.created_at,
       COUNT(o.id)::int AS order_count
       FROM customers c LEFT JOIN orders o ON o.customer_id=c.id
       GROUP BY c.id ORDER BY c.created_at DESC LIMIT 1000`);
