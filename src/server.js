@@ -62,6 +62,8 @@ function safeText(value, max) {
   return value.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, max);
 }
 function validEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
+function validName(value) { return /^[\p{L}]+(?:[ '\u2019-][\p{L}]+){1,5}$/u.test(value); }
+function validUsername(value) { return /^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{2,29})$/.test(value); }
 function parseBoolean(value) { if (value === true || value === false) return value; if (value === 'true') return true; if (value === 'false') return false; return null; }
 async function audit(req, action, entity, entityId = null) { if (!pool) return; await pool.query('INSERT INTO audit_logs(admin_id,action,entity,entity_id,ip_address) VALUES($1,$2,$3,$4,$5)', [req.auth?.admin_id ?? null, action, entity, entityId == null ? null : String(entityId), req.ip]); }
 
@@ -119,7 +121,7 @@ app.post('/api/orders', async (req,res,next)=>{
     const name=safeText(req.body.customer?.name,120), email=safeText(req.body.customer?.email,160).toLowerCase();
     const phone=safeText(req.body.customer?.phone,40), address=safeText(req.body.customer?.address,240), city=safeText(req.body.customer?.city,120), country=safeText(req.body.customer?.country,120);
     const items=Array.isArray(req.body.items)?req.body.items.slice(0,50):[];
-    if(!name||!validEmail(email)||!address||!city||!country||!items.length) return res.status(400).json({error:'Informations de commande invalides.'});
+    if(!validName(name)||!validEmail(email)||!address||!city||!country||!items.length) return res.status(400).json({error:'Informations de commande invalides.'});
     const ids=[...new Set(items.map(x=>Number(x.product_id)).filter(Number.isInteger))];
     if(!ids.length)return res.status(400).json({error:'Panier invalide.'});
     await client.query('BEGIN');
@@ -165,7 +167,7 @@ async function customerAuth(req, res, next) {
       ?.slice('nexora_customer_session='.length);
     if (!raw) return res.status(401).json({ error: 'Connexion requise.' });
     const r = await pool.query(
-      'SELECT s.id,s.customer_id,c.name,c.email,c.phone,c.address,c.city,c.country FROM customer_sessions s JOIN customers c ON c.id=s.customer_id WHERE s.token_hash=$1 AND s.expires_at>NOW()',
+      'SELECT s.id,s.customer_id,c.name,c.username,c.email,c.phone,c.address,c.city,c.country,c.balance_cents,c.active FROM customer_sessions s JOIN customers c ON c.id=s.customer_id WHERE s.token_hash=$1 AND s.expires_at>NOW()',
       [sha256(raw)]
     );
     if (!r.rowCount) return res.status(401).json({ error: 'Session invalide ou expirée.' });
@@ -177,19 +179,19 @@ async function customerAuth(req, res, next) {
 
 app.post('/api/customer/register', customerAuthLimiter, async (req,res,next)=>{
   try {
-    const name=safeText(req.body.name,120), email=safeText(req.body.email,160).toLowerCase();
+    const name=safeText(req.body.name,120), username=safeText(req.body.username,30).toLowerCase(), email=safeText(req.body.email,160).toLowerCase();
     const password=typeof req.body.password==='string'?req.body.password:'';
-    if(!name||!validEmail(email)||password.length<12||password.length>200)
-      return res.status(400).json({error:'Nom, e-mail ou mot de passe invalide. Le mot de passe doit contenir au moins 12 caractères.'});
-    const existing=await pool.query('SELECT id,password_hash FROM customers WHERE email=$1',[email]);
+    if(!validName(name)||!validUsername(username)||!validEmail(email)||password.length<12||password.length>200)
+      return res.status(400).json({error:'Nom, nom d’utilisateur, e-mail ou mot de passe invalide. Le nom doit contenir au moins deux mots et le nom d’utilisateur 3 à 30 caractères.'});
+    const existing=await pool.query('SELECT id,password_hash FROM customers WHERE email=$1 OR LOWER(username)=LOWER($2)',[email,username]);
     if(existing.rowCount && existing.rows[0].password_hash)
-      return res.status(409).json({error:'Un compte existe déjà avec cette adresse e-mail.'});
+      return res.status(409).json({error:'Cet e-mail ou ce nom d’utilisateur est déjà utilisé.'});
     const hash=hashPassword(password);
     const r=await pool.query(
-      `INSERT INTO customers(name,email,password_hash) VALUES($1,$2,$3)
-       ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,password_hash=EXCLUDED.password_hash,updated_at=NOW()
-       RETURNING id,name,email`,
-      [name,email,hash]
+      `INSERT INTO customers(name,username,email,password_hash) VALUES($1,$2,$3,$4)
+       ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,username=EXCLUDED.username,password_hash=EXCLUDED.password_hash,updated_at=NOW()
+       RETURNING id,name,username,email`,
+      [name,username,email,hash]
     );
     const raw=randomToken(), expires=new Date(Date.now()+sessionHours*3600000);
     await pool.query('INSERT INTO customer_sessions(token_hash,customer_id,expires_at) VALUES($1,$2,$3)',[sha256(raw),r.rows[0].id,expires]);
@@ -200,18 +202,32 @@ app.post('/api/customer/register', customerAuthLimiter, async (req,res,next)=>{
 
 app.post('/api/customer/login', customerAuthLimiter, async(req,res,next)=>{
   try {
-    const email=safeText(req.body.email,160).toLowerCase(), password=typeof req.body.password==='string'?req.body.password:'';
-    if(!validEmail(email)||password.length<12)return res.status(400).json({error:'Identifiants invalides.'});
-    const r=await pool.query('SELECT id,name,email,password_hash FROM customers WHERE email=$1',[email]);
-    if(!r.rowCount||!r.rows[0].password_hash||!verifyPassword(password,r.rows[0].password_hash))
+    const identifier=safeText(req.body.identifier||req.body.email,160).toLowerCase(), password=typeof req.body.password==='string'?req.body.password:'';
+    if(!identifier||password.length<12)return res.status(400).json({error:'Identifiants invalides.'});
+    const r=await pool.query('SELECT id,name,username,email,password_hash,active FROM customers WHERE LOWER(email)=LOWER($1) OR LOWER(username)=LOWER($1)',[identifier]);
+    if(!r.rowCount||!r.rows[0].active||!r.rows[0].password_hash||!verifyPassword(password,r.rows[0].password_hash))
       return res.status(401).json({error:'E-mail ou mot de passe incorrect.'});
     const raw=randomToken(),expires=new Date(Date.now()+sessionHours*3600000);
     await pool.query('INSERT INTO customer_sessions(token_hash,customer_id,expires_at) VALUES($1,$2,$3)',[sha256(raw),r.rows[0].id,expires]);
     res.setHeader('Set-Cookie',`nexora_customer_session=${raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${sessionHours*3600}${isProd?'; Secure':''}`);
-    res.json({customer:{id:r.rows[0].id,name:r.rows[0].name,email:r.rows[0].email}});
+    res.json({customer:{id:r.rows[0].id,name:r.rows[0].name,username:r.rows[0].username,email:r.rows[0].email}});
   } catch(e){next(e);}
 });
 
+
+app.get('/api/customer/transactions',customerAuth,async(req,res,next)=>{
+  try{
+    const r=await pool.query(
+      `SELECT o.id AS order_id,o.created_at,o.currency,o.total_cents,o.status,o.payment_status,o.payment_method,
+              COALESCE(p.status,'pending') AS transaction_status,
+              p.provider_reference
+       FROM orders o LEFT JOIN LATERAL (
+         SELECT status,provider_reference FROM payments WHERE order_id=o.id ORDER BY created_at DESC LIMIT 1
+       ) p ON TRUE
+       WHERE o.customer_id=$1 ORDER BY o.created_at DESC LIMIT 500`,[req.customer.customer_id]);
+    res.json(r.rows);
+  }catch(e){next(e);}
+});
 app.post('/api/customer/logout',customerAuth,async(req,res,next)=>{
   try{
     await pool.query('DELETE FROM customer_sessions WHERE id=$1',[req.customer.id]);
