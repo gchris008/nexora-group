@@ -261,7 +261,7 @@ app.post('/api/customer/register', customerAuthLimiter, async (req,res,next)=>{
     const name=safeText(req.body.name,120), username=safeText(req.body.username,30).toLowerCase(), email=safeText(req.body.email,160).toLowerCase(), phone=normalizePhone(req.body.phone);
     const password=typeof req.body.password==='string'?req.body.password:'';
     if(!validName(name)||!validUsername(username)||!validEmail(email)||!validPhone(phone)||password.length<12||password.length>200)return res.status(400).json({error:'Nom, nom d’utilisateur, e-mail, téléphone ou mot de passe invalide.'});
-    if(!emailConfigured()) return res.status(503).json({error:'La vérification par e-mail n’est pas encore configurée.'});
+    if(!emailConfigured()) return res.status(503).json({error:'La vérification par e-mail n’est pas encore configurée. Configurez RESEND_API_KEY et RESEND_FROM_EMAIL dans Vercel.'});
     const existing=await pool.query('SELECT id,active,email_verified_at FROM customers WHERE email=$1 OR LOWER(username)=LOWER($2) LIMIT 1',[email,username]);
     if(existing.rowCount) return res.status(409).json({error:existing.rows[0].email_verified_at?'Ce compte existe déjà. Utilisez la connexion ou réinitialisez votre mot de passe.':'Une inscription existe déjà avec ces informations. Vérifiez votre e-mail.'});
     const hash=hashPassword(password);
