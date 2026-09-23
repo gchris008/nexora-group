@@ -1,3 +1,4 @@
+const themeKey='nexora_theme';const applyTheme=()=>{const t=localStorage.getItem(themeKey)||'dark';document.documentElement.dataset.theme=t;document.querySelectorAll('[data-theme-toggle]').forEach(b=>b.textContent=t==='dark'?'☼ / ☾':'☾ / ☼');};applyTheme();document.querySelector('[data-theme-toggle]')?.addEventListener('click',()=>{localStorage.setItem(themeKey,(localStorage.getItem(themeKey)||'dark')==='dark'?'light':'dark');applyTheme();});
 const CART_KEY='nexora_cart';
 const summary=document.getElementById('summary');
 const checkout=document.getElementById('checkout');
