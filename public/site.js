@@ -101,8 +101,9 @@ const pageData={
 
 function productCard(p){
   const stock=Math.max(0,Number(p.stock_quantity)||0);
-  const image=p.image_url&&/^https:\/\//i.test(p.image_url)?'<img class="product-image" src="'+escapeHtml(p.image_url)+'" alt="'+escapeHtml(p.name)+'" loading="lazy">':'<div class="product-image placeholder" aria-hidden="true">NEXORA</div>';
-  return '<article class="product-card">'+image+'<div class="product-body">'+
+  const image=p.image_url&&(/^(https:\/\/|data:image\/)/i.test(p.image_url))?'<img class="product-image" src="'+escapeHtml(p.image_url)+'" alt="'+escapeHtml(p.name)+'" loading="lazy">':'<div class="product-image placeholder" aria-hidden="true">NEXORA</div>';
+  const target='/'+(p.domain||productDomain(p));
+  return '<article class="product-card" data-product-link="'+escapeHtml(target)+'" role="link" tabindex="0">'+image+'<div class="product-body">'+
     (p.category?'<span class="product-category">'+escapeHtml(p.category)+'</span>':'')+
     '<h3>'+escapeHtml(p.name)+'</h3>'+
     (p.sku?'<small>Réf. '+escapeHtml(p.sku)+'</small>':'')+
@@ -124,7 +125,7 @@ async function loadCatalogue(target='catalogueList',domain='commerce'){
   const el=document.getElementById(target);if(!el)return;
   try{
     const r=await fetch('/api/products');if(!r.ok)throw new Error();
-    const items=(await r.json()).filter(p=>productDomain(p)===domain);
+    const items=(await r.json()).filter(p=>(p.domain||productDomain(p))===domain);
     el.innerHTML=items.length?items.map(productCard).join(''):'<p class="empty-state">Aucun produit dans ce domaine pour le moment.</p>';
   }catch{el.innerHTML='<p class="empty-state">Le catalogue est temporairement indisponible.</p>';}
 }
@@ -143,7 +144,7 @@ function addToCart(product,requestedQuantity=1){
 function pageTemplate(route){
   const d=pageData[route]||pageData.home;
   if(route==='home')return '<section class="hero"><div class="hero-glow hero-glow-one"></div><div class="hero-glow hero-glow-two"></div><div class="wrap hero-content"><div class="hero-copy"><p class="eyebrow">'+d.eyebrow+'</p><h1>'+d.heading+'</h1><p>'+d.intro+'</p><div class="actions"><a class="btn gold" href="/commerce" data-route="commerce">Découvrir le commerce</a><a class="btn" href="#contact" data-contact-link>Nous contacter</a></div></div><div class="hero-panel"><span>01</span><strong>COMMERCE</strong><p>Une plateforme conçue pour connecter produits, clients et opérations.</p><div class="hero-line"></div><small>Commerce · Distribution · Technologie</small></div></div></section><section class="wrap intro-section"><div><p class="eyebrow">UN GROUPE. PLUSIEURS ACTIVITÉS.</p><h2>Construire, distribuer et développer.</h2></div><p>NEXORA réunit commerce, distribution et technologie dans une même vision internationale.</p></section><section class="wrap grid business-grid"><a class="business-card-link" href="/commerce" data-route="commerce"><article><b>01</b><h2>Commerce & E-commerce</h2><p>Une plateforme commerciale moderne pour vendre, présenter et développer des offres sur plusieurs marchés.</p></article></a><a class="business-card-link" href="/distribution" data-route="distribution"><article><b>02</b><h2>Distribution</h2><p>Sourcing, distribution et développement de flux commerciaux internationaux.</p></article></a><a class="business-card-link" href="/technologie" data-route="technologie"><article><b>03</b><h2>Technologie</h2><p>Applications, services numériques et outils conçus pour accompagner la croissance du groupe.</p></article></a><a class="business-card-link" href="/international" data-route="international"><article><b>04</b><h2>International</h2><p>Une architecture pensée pour plusieurs pays, devises et opérations.</p></article></a></section><section class="security"><div class="wrap"><p class="eyebrow">NEXORA SECURITY</p><h2>Une plateforme conçue avec la sécurité côté serveur.</h2><p>Authentification, sessions sécurisées, contrôle des rôles, validation des données et protection des opérations.</p></div></section><section id="contact" class="wrap contact"><p class="eyebrow">CONTACT</p><h2>Parlons de votre projet.</h2>'+contactFormHtml()+'</section>';
-  if(['commerce','distribution','technologie'].includes(route))return '<section class="page-hero"><div class="wrap"><p class="eyebrow">'+d.eyebrow+'</p><h1>'+d.heading+'</h1><p>'+d.intro+'</p></div></section><section class="wrap info-grid"><article><b>'+d.eyebrow+'</b><h2>Produits et activités du domaine</h2><p>Les produits sont automatiquement orientés vers leur domaine selon leur catégorie, leur nom et leur description.</p></article><article><b>NEXORA GROUP</b><h2>Un espace dédié</h2><p>Chaque domaine possède son propre catalogue pour garder une navigation claire.</p></article></section><section class="wrap contact catalogue-section"><p class="eyebrow">CATALOGUE</p><div class="section-heading"><div><h2>Produits disponibles</h2><p>Choisissez la quantité avant d’ajouter un produit à votre panier.</p></div><a class="btn" href="/checkout">Ouvrir le panier</a></div><div id="catalogueList" class="product-grid"></div></section><section id="contact" class="wrap contact"><p class="eyebrow">CONTACT</p><h2>Parlons de votre projet.</h2>'+contactFormHtml()+'</section>';
+  if(['commerce','distribution','technologie','international'].includes(route))return '<section class="page-hero"><div class="wrap"><p class="eyebrow">'+d.eyebrow+'</p><h1>'+d.heading+'</h1><p>'+d.intro+'</p></div></section><section class="wrap info-grid"><article><b>'+d.eyebrow+'</b><h2>Produits et activités du domaine</h2><p>Les produits sont automatiquement orientés vers leur domaine selon leur catégorie, leur nom et leur description.</p></article><article><b>NEXORA GROUP</b><h2>Un espace dédié</h2><p>Chaque domaine possède son propre catalogue pour garder une navigation claire.</p></article></section><section class="wrap contact catalogue-section"><p class="eyebrow">CATALOGUE</p><div class="section-heading"><div><h2>Produits disponibles</h2><p>Choisissez la quantité avant d’ajouter un produit à votre panier.</p></div><a class="btn" href="/checkout">Ouvrir le panier</a></div><div id="catalogueList" class="product-grid"></div></section><section id="contact" class="wrap contact"><p class="eyebrow">CONTACT</p><h2>Parlons de votre projet.</h2>'+contactFormHtml()+'</section>';
   const labels={distribution:['IMPORT / EXPORT','Approvisionnement et flux','NEXORA peut organiser son activité autour du sourcing, de l’importation, de l’exportation et de la distribution de produits.'],technologie:['SOLUTIONS NUMÉRIQUES','Services et outils','La technologie accompagne les opérations commerciales grâce à des applications, services et outils numériques.'],international:['EXPANSION INTERNATIONALE','Plusieurs marchés','NEXORA est pensée pour évoluer avec de nouveaux pays, partenaires, devises et marchés.'],partenaires:['RÉSEAU DE PARTENAIRES','Relations commerciales','NEXORA peut collaborer avec des fournisseurs, distributeurs, prestataires logistiques et partenaires technologiques.']};
   const x=labels[route];
   return '<section class="page-hero"><div class="wrap"><p class="eyebrow">'+d.eyebrow+'</p><h1>'+d.heading+'</h1><p>'+d.intro+'</p></div></section><section class="wrap info-grid"><article><b>'+x[0]+'</b><h2>'+x[1]+'</h2><p>'+x[2]+'</p></article><article><b>NEXORA GROUP</b><h2>Une vision connectée</h2><p>Commerce, distribution, technologie et internationalisation peuvent évoluer ensemble au sein du groupe.</p></article></section><section id="contact" class="wrap contact"><p class="eyebrow">CONTACT</p><h2>Parlons de votre projet.</h2>'+contactFormHtml()+'</section>';
@@ -157,7 +158,7 @@ function renderRoute(route,replace=false){
   view.innerHTML=pageTemplate(route);
   document.title=pageData[route].title;
   document.querySelectorAll('[data-route]').forEach(a=>a.classList.toggle('active',a.dataset.route===route));
-  if(['commerce','distribution','technologie'].includes(route))loadCatalogue('catalogueList',route);
+  if(['commerce','distribution','technologie','international'].includes(route))loadCatalogue('catalogueList',route);
   window.scrollTo({top:0,behavior:'smooth'});
   if(replace)history.replaceState({route},'',route==='home'?'/':'/'+route);
 }
@@ -191,7 +192,7 @@ document.addEventListener('click',e=>{
   if(e.target.closest('#closeAccount')){closeAccount();return;}
   if(e.target.closest('#closeCart')){closeCart();return;}
   if(e.target.id==='cartBackdrop'){closeCart();closeAccount();return;}
-  if(e.target.closest('[data-theme-toggle]'))NexoraTheme.toggle();
+  const card=e.target.closest('[data-product-link]');if(card&&!e.target.closest('button,input,a')){navigate(card.dataset.productLink.slice(1));return;}\n  if(e.target.closest('[data-theme-toggle]'))NexoraTheme.toggle();
   const form=e.target.closest('.contact-form');if(form&&e.target.matches('button')){e.preventDefault();sendContact(form);}
 });
 
