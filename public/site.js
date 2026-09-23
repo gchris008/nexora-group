@@ -26,10 +26,32 @@ function renderCartDrawer(){
 }
 function updateCartCount(){const count=getCart().reduce((s,x)=>s+Math.max(0,Number(x.quantity)||0),0);const link=document.getElementById('cartLink');if(link)link.textContent='Panier ('+count+')';renderCartDrawer();}
 
+let currentAccount=null;
+async function openAccount(){
+  const d=document.getElementById('accountDrawer'), body=document.getElementById('accountDrawerBody');
+  if(!d||!body)return;
+  d.classList.add('open');d.setAttribute('aria-hidden','false');document.getElementById('cartBackdrop').hidden=false;document.body.classList.add('cart-open');
+  body.innerHTML='<p class="drawer-empty">Chargement de votre espace…</p>';
+  try{
+    const me=await fetch('/api/customer/me',{credentials:'same-origin'});
+    if(!me.ok){body.innerHTML='<div class="account-guest"><h3>Votre espace client</h3><p>Connectez-vous ou créez votre compte pour consulter votre solde, vos commandes et vos transactions.</p><div class="account-drawer-actions"><a class="btn gold" href="/connexion">Connexion</a><a class="btn" href="/inscription">Inscription</a></div></div>';return;}
+    const data=await me.json();currentAccount=data.customer;
+    const [or,tx]=await Promise.all([fetch('/api/customer/orders'),fetch('/api/customer/transactions')]);
+    const orders=or.ok?await or.json():[], transactions=tx.ok?await tx.json():[];
+    const status=s=>({pending:'En attente',confirmed:'Confirmée',processing:'En traitement',shipped:'Expédiée',delivered:'Livrée',cancelled:'Annulée'}[s]||s);
+    body.innerHTML='<div class="account-summary"><strong>@'+escapeHtml(currentAccount.username)+'</strong><span>'+escapeHtml(currentAccount.email)+'</span><b>Solde : '+((Number(currentAccount.balance_cents||0)/100).toFixed(2))+' HTG</b></div>'+
+      '<section class="account-mini-section"><h3>Mes informations</h3><div class="account-info-list"><span><b>Nom</b>'+escapeHtml(currentAccount.name)+'</span><span><b>E-mail</b>'+escapeHtml(currentAccount.email)+'</span><span><b>Téléphone</b>'+escapeHtml(currentAccount.phone||'—')+'</span><span><b>Adresse</b>'+escapeHtml(currentAccount.address||'—')+'</span><span><b>Ville</b>'+escapeHtml(currentAccount.city||'—')+'</span></div><a class="btn account-edit-btn" href="/compte">Modifier mes informations</a></section>'+
+      '<section class="account-mini-section"><h3>Commandes</h3>'+(orders.length?orders.slice(0,5).map(x=>'<div class="account-line"><span>Commande #'+x.id+'<small>'+new Date(x.created_at).toLocaleString('fr-FR')+'</small></span><b>'+((Number(x.total_cents||0)/100).toFixed(2))+' '+escapeHtml(x.currency)+'</b><em>'+status(x.status)+'</em></div>').join(''):'<p class="drawer-empty">Aucune commande.</p>')+'</section>'+
+      '<section class="account-mini-section"><h3>Transactions</h3>'+(transactions.length?transactions.slice(0,5).map(x=>'<div class="account-line"><span>Commande #'+x.order_id+'<small>'+new Date(x.created_at).toLocaleString('fr-FR')+'</small></span><b>'+((Number(x.total_cents||0)/100).toFixed(2))+' '+escapeHtml(x.currency)+'</b><em>'+escapeHtml(x.payment_status||'Non payée')+'</em></div>').join(''):'<p class="drawer-empty">Aucune transaction.</p>')+'</section>'+
+      '<div class="account-drawer-actions"><a class="btn gold" href="/compte">Ouvrir mon espace</a></div>';
+  }catch{body.innerHTML='<p class="drawer-empty">Impossible de charger votre espace client.</p>';}
+}
+function closeAccount(){const d=document.getElementById('accountDrawer');if(!d)return;d.classList.remove('open');d.setAttribute('aria-hidden','true');document.getElementById('cartBackdrop').hidden=true;document.body.classList.remove('cart-open');}
+
 async function updateAccountNav(){
   const el=document.getElementById('accountLinks');if(!el)return;
-  try{const r=await fetch('/api/customer/me',{credentials:'same-origin'});if(r.ok){const d=await r.json();if(d?.customer){el.innerHTML='<a class="account-primary" href="/compte">@'+escapeHtml(d.customer.username)+'</a>';return;}}}catch{}
-  el.innerHTML='<a href="/connexion">Connexion</a>';
+  try{const r=await fetch('/api/customer/me',{credentials:'same-origin'});if(r.ok){const d=await r.json();if(d?.customer){el.innerHTML='<a class="account-primary" href="#compte" data-account-open>Compte</a>';return;}}}catch{}
+  el.innerHTML='<a href="#compte" data-account-open>Connexion / Inscription</a>';
 }
 
 const pageData={
@@ -91,12 +113,19 @@ function productCard(p){
     '</div></article>';
 }
 
-async function loadCatalogue(target='catalogueList'){
+function productDomain(p){
+  const text=((p.category||'')+' '+(p.name||'')+' '+(p.description||'')).toLowerCase();
+  if(/technolog|informat|logiciel|software|app|application|ordinateur|laptop|pc|smartphone|telephone|phone|tablette|tablet|electron|accessoire tech|gaming|serveur|réseau|network|ia|intelligence artificielle/.test(text))return 'technologie';
+  if(/distribution|grossiste|wholesale|logistique|logistic|stockage|entrepôt|entrepot|approvisionnement|sourcing/.test(text))return 'distribution';
+  if(/international|import|export|global/.test(text))return 'international';
+  return 'commerce';
+}
+async function loadCatalogue(target='catalogueList',domain='commerce'){
   const el=document.getElementById(target);if(!el)return;
   try{
     const r=await fetch('/api/products');if(!r.ok)throw new Error();
-    const items=await r.json();
-    el.innerHTML=items.length?items.map(productCard).join(''):'<p class="empty-state">Catalogue en préparation.</p>';
+    const items=(await r.json()).filter(p=>productDomain(p)===domain);
+    el.innerHTML=items.length?items.map(productCard).join(''):'<p class="empty-state">Aucun produit dans ce domaine pour le moment.</p>';
   }catch{el.innerHTML='<p class="empty-state">Le catalogue est temporairement indisponible.</p>';}
 }
 
@@ -114,7 +143,7 @@ function addToCart(product,requestedQuantity=1){
 function pageTemplate(route){
   const d=pageData[route]||pageData.home;
   if(route==='home')return '<section class="hero"><div class="hero-glow hero-glow-one"></div><div class="hero-glow hero-glow-two"></div><div class="wrap hero-content"><div class="hero-copy"><p class="eyebrow">'+d.eyebrow+'</p><h1>'+d.heading+'</h1><p>'+d.intro+'</p><div class="actions"><a class="btn gold" href="/commerce" data-route="commerce">Découvrir le commerce</a><a class="btn" href="#contact" data-contact-link>Nous contacter</a></div></div><div class="hero-panel"><span>01</span><strong>COMMERCE</strong><p>Une plateforme conçue pour connecter produits, clients et opérations.</p><div class="hero-line"></div><small>Commerce · Distribution · Technologie</small></div></div></section><section class="wrap intro-section"><div><p class="eyebrow">UN GROUPE. PLUSIEURS ACTIVITÉS.</p><h2>Construire, distribuer et développer.</h2></div><p>NEXORA réunit commerce, distribution et technologie dans une même vision internationale.</p></section><section class="wrap grid business-grid"><a class="business-card-link" href="/commerce" data-route="commerce"><article><b>01</b><h2>Commerce & E-commerce</h2><p>Une plateforme commerciale moderne pour vendre, présenter et développer des offres sur plusieurs marchés.</p></article></a><a class="business-card-link" href="/distribution" data-route="distribution"><article><b>02</b><h2>Distribution</h2><p>Sourcing, distribution et développement de flux commerciaux internationaux.</p></article></a><a class="business-card-link" href="/technologie" data-route="technologie"><article><b>03</b><h2>Technologie</h2><p>Applications, services numériques et outils conçus pour accompagner la croissance du groupe.</p></article></a><a class="business-card-link" href="/international" data-route="international"><article><b>04</b><h2>International</h2><p>Une architecture pensée pour plusieurs pays, devises et opérations.</p></article></a></section><section class="security"><div class="wrap"><p class="eyebrow">NEXORA SECURITY</p><h2>Une plateforme conçue avec la sécurité côté serveur.</h2><p>Authentification, sessions sécurisées, contrôle des rôles, validation des données et protection des opérations.</p></div></section><section id="contact" class="wrap contact"><p class="eyebrow">CONTACT</p><h2>Parlons de votre projet.</h2>'+contactFormHtml()+'</section>';
-  if(route==='commerce')return '<section class="page-hero"><div class="wrap"><p class="eyebrow">'+d.eyebrow+'</p><h1>'+d.heading+'</h1><p>'+d.intro+'</p></div></section><section class="wrap info-grid"><article><b>VENTE EN LIGNE</b><h2>Catalogue et commandes</h2><p>Les produits peuvent être présentés avec leur prix, stock et quantité. Le client choisit directement combien d’unités il souhaite ajouter au panier.</p></article><article><b>EXPÉRIENCE CLIENT</b><h2>Un parcours simple</h2><p>Découverte, panier, compte client et commande sont réunis dans une expérience continue.</p></article></section><section class="wrap contact catalogue-section"><p class="eyebrow">E-COMMERCE</p><div class="section-heading"><div><h2>Produits disponibles</h2><p>Choisissez la quantité avant d’ajouter un produit à votre panier.</p></div><a class="btn" href="/checkout">Ouvrir le panier</a></div><div id="catalogueList" class="product-grid"></div></section><section id="contact" class="wrap contact"><p class="eyebrow">CONTACT</p><h2>Parlons de votre projet.</h2>'+contactFormHtml()+'</section>';
+  if(['commerce','distribution','technologie'].includes(route))return '<section class="page-hero"><div class="wrap"><p class="eyebrow">'+d.eyebrow+'</p><h1>'+d.heading+'</h1><p>'+d.intro+'</p></div></section><section class="wrap info-grid"><article><b>'+d.eyebrow+'</b><h2>Produits et activités du domaine</h2><p>Les produits sont automatiquement orientés vers leur domaine selon leur catégorie, leur nom et leur description.</p></article><article><b>NEXORA GROUP</b><h2>Un espace dédié</h2><p>Chaque domaine possède son propre catalogue pour garder une navigation claire.</p></article></section><section class="wrap contact catalogue-section"><p class="eyebrow">CATALOGUE</p><div class="section-heading"><div><h2>Produits disponibles</h2><p>Choisissez la quantité avant d’ajouter un produit à votre panier.</p></div><a class="btn" href="/checkout">Ouvrir le panier</a></div><div id="catalogueList" class="product-grid"></div></section><section id="contact" class="wrap contact"><p class="eyebrow">CONTACT</p><h2>Parlons de votre projet.</h2>'+contactFormHtml()+'</section>';
   const labels={distribution:['IMPORT / EXPORT','Approvisionnement et flux','NEXORA peut organiser son activité autour du sourcing, de l’importation, de l’exportation et de la distribution de produits.'],technologie:['SOLUTIONS NUMÉRIQUES','Services et outils','La technologie accompagne les opérations commerciales grâce à des applications, services et outils numériques.'],international:['EXPANSION INTERNATIONALE','Plusieurs marchés','NEXORA est pensée pour évoluer avec de nouveaux pays, partenaires, devises et marchés.'],partenaires:['RÉSEAU DE PARTENAIRES','Relations commerciales','NEXORA peut collaborer avec des fournisseurs, distributeurs, prestataires logistiques et partenaires technologiques.']};
   const x=labels[route];
   return '<section class="page-hero"><div class="wrap"><p class="eyebrow">'+d.eyebrow+'</p><h1>'+d.heading+'</h1><p>'+d.intro+'</p></div></section><section class="wrap info-grid"><article><b>'+x[0]+'</b><h2>'+x[1]+'</h2><p>'+x[2]+'</p></article><article><b>NEXORA GROUP</b><h2>Une vision connectée</h2><p>Commerce, distribution, technologie et internationalisation peuvent évoluer ensemble au sein du groupe.</p></article></section><section id="contact" class="wrap contact"><p class="eyebrow">CONTACT</p><h2>Parlons de votre projet.</h2>'+contactFormHtml()+'</section>';
@@ -128,7 +157,7 @@ function renderRoute(route,replace=false){
   view.innerHTML=pageTemplate(route);
   document.title=pageData[route].title;
   document.querySelectorAll('[data-route]').forEach(a=>a.classList.toggle('active',a.dataset.route===route));
-  if(route==='commerce')loadCatalogue();
+  if(['commerce','distribution','technologie'].includes(route))loadCatalogue('catalogueList',route);
   window.scrollTo({top:0,behavior:'smooth'});
   if(replace)history.replaceState({route},'',route==='home'?'/':'/'+route);
 }
@@ -158,11 +187,14 @@ document.addEventListener('click',e=>{
   const remove=e.target.closest('[data-remove-cart]');
   if(remove){const cart=getCart();cart.splice(Number(remove.dataset.removeCart),1);saveCart(cart);return;}
   if(e.target.closest('#floatingCart,#cartLink')){e.preventDefault();openCart();return;}
-  if(e.target.closest('#closeCart,#cartBackdrop')){closeCart();return;}
+  if(e.target.closest('[data-account-open]')){e.preventDefault();openAccount();return;}
+  if(e.target.closest('#closeAccount')){closeAccount();return;}
+  if(e.target.closest('#closeCart')){closeCart();return;}
+  if(e.target.id==='cartBackdrop'){closeCart();closeAccount();return;}
   if(e.target.closest('[data-theme-toggle]'))NexoraTheme.toggle();
   const form=e.target.closest('.contact-form');if(form&&e.target.matches('button')){e.preventDefault();sendContact(form);}
 });
 
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCart();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeCart();closeAccount();}});
 window.addEventListener('popstate',()=>renderRoute(location.pathname.slice(1)||'home'));
 updateCartCount();updateAccountNav();renderRoute(location.pathname.slice(1)||'home',true);loadSite();
