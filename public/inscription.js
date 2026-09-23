@@ -10,13 +10,14 @@ const rules={
  name:v=>/^[\p{Lu}][\p{L}'’-]*(?:\s+[\p{Lu}][\p{L}'’-]*){1,5}$/u.test(v.trim()),
  username:v=>/^[A-Za-z0-9](?:[A-Za-z0-9._-]{2,29})$/.test(v),
  email:v=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
- phone:v=>/^\+[1-9]\d{7,14}$/.test(v.replace(/[\s().-]/g,'')),
+ phone:v=>/^\+509\d{8}$/.test(v.replace(/[\s().-]/g,'')),
  password:v=>v.length>=12&&/[A-ZÀ-ÖØ-Þ]/.test(v)&&/[a-zà-öø-ÿ]/.test(v)&&/[0-9]/.test(v)&&/[^A-Za-zÀ-ÖØ-öø-ÿ0-9]/.test(v)
 };
 let pending=null;
 function setValid(id,ok,active){const el=document.getElementById(id+'Valid');el.textContent=active&&ok?'✓':'';el.classList.toggle('show',active&&ok);fields[id].classList.toggle('valid',active&&ok);fields[id].classList.toggle('invalid',active&&!ok);}
 function validate(id){const v=fields[id].value;setValid(id,rules[id](v),v.length>0);return rules[id](v);}
 Object.keys(fields).forEach(id=>fields[id].addEventListener('input',()=>validate(id)));
+fields.phone.addEventListener('input',()=>{let v=fields.phone.value.replace(/[^\d+]/g,'');if(!v.startsWith('+509'))v='+509'+v.replace(/^\+?509?/,'');v='+509'+v.slice(4).replace(/\D/g,'').slice(0,8);fields.phone.value=v;validate('phone');});
 form.addEventListener('submit',async e=>{
  e.preventDefault(); const msg=document.getElementById('msg');
  const ok=Object.keys(fields).map(validate).every(Boolean);
