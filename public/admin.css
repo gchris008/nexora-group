@@ -7,3 +7,17 @@
 .page-logo{width:210px;height:140px;max-width:none;max-height:none;object-fit:contain;object-position:center;margin:0 auto 12px}
 .admin-header-logo{width:125px;height:58px;max-width:none;max-height:none;object-fit:contain;object-position:left center}
 @media(max-width:600px){.page-logo{width:190px;height:126px}.admin-header-logo{width:110px;height:52px}}
+
+/* Client : vérification et thème clair */
+.verify-box{margin-top:22px;padding:20px;border:1px solid #d4af3740;border-radius:14px;background:#ffffff06}
+.verify-box h2,.verify-box h3{margin-top:0}.verify-box form{margin-top:12px}.secondary-action{background:#ffffff12;color:#fff}.top-actions{display:flex;gap:8px;align-items:center}.gold-button{background:var(--g);color:#0b0b0c}.profile-section{border-top:1px solid #ffffff12;padding-top:20px;margin-top:20px}.profile-form{display:grid;grid-template-columns:1fr 1fr;gap:13px}.profile-form label{display:grid;gap:7px;color:#aaa}.profile-form label:nth-child(4){grid-column:1/-1}.profile-form label:nth-child(7){grid-column:1/-1}.profile-form button,.profile-form #profileMsg{grid-column:1/-1}.profile-form input{margin:0}.theme-toggle{border:1px solid #ffffff20;border-radius:999px;background:#ffffff10;color:#fff;padding:8px 11px;font:inherit;cursor:pointer;white-space:nowrap}
+html[data-theme="light"] body{background:#f4f5f7;color:#17181c}
+html[data-theme="light"] .card{background:#fff;border-color:#00000012;box-shadow:0 15px 40px #0000000a}
+html[data-theme="light"] .card p,html[data-theme="light"] .tab label,html[data-theme="light"] .profile-form label{color:#646a74}
+html[data-theme="light"] input,html[data-theme="light"] textarea{background:#fff;color:#17181c;border-color:#00000018}
+html[data-theme="light"] .tabs button{background:#00000007;color:#222}
+html[data-theme="light"] .tabs button.active{background:var(--g);color:#000}
+html[data-theme="light"] .top button{background:#00000007;color:#222}
+html[data-theme="light"] .verify-box{background:#00000003;border-color:#d4af3740}
+html[data-theme="light"] .secondary-action,html[data-theme="light"] .theme-toggle{background:#00000007;color:#222;border-color:#00000015}
+@media(max-width:700px){.profile-form{grid-template-columns:1fr}.profile-form label:nth-child(4),.profile-form label:nth-child(7),.profile-form button,.profile-form #profileMsg{grid-column:auto}}
