@@ -13,6 +13,19 @@ function saveCart(cart){
   updateCartCount();
 }
 
+async function updateAccountNav(){
+  const el=document.getElementById('accountLinks');
+  if(!el)return;
+  try{
+    const r=await fetch('/api/customer/me',{credentials:'same-origin'});
+    if(r.ok){
+      const d=await r.json();
+      if(d?.customer){el.innerHTML='<a class="account-primary" href="/compte">Mon compte</a>';return;}
+    }
+  }catch{}
+  el.innerHTML='<a href="/connexion">Connexion</a><a class="account-primary" href="/inscription">Créer un compte</a>';
+}
+
 function updateCartCount(){
   const count=getCart().reduce((sum,item)=>sum+Math.max(0,Number(item.quantity)||0),0);
   const link=document.getElementById('cartLink');
@@ -96,5 +109,6 @@ document.addEventListener('click',e=>{
 });
 
 updateCartCount();
+updateAccountNav();
 loadSite();
 loadCatalogue();
