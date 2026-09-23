@@ -21,6 +21,9 @@ async function loadCustomer(){
   currentCustomer=d.customer;
   document.getElementById('name').value=d.customer.name||'';
   document.getElementById('email').value=d.customer.email||'';
+  document.getElementById('phone').value=d.customer.phone||'';
+  document.getElementById('address').value=d.customer.address||'';
+  document.getElementById('city').value=d.customer.city||'';
   document.getElementById('memberIdentity').textContent='Commande pour @'+d.customer.username+' — vos informations de compte sont utilisées automatiquement.';
   return true;
 }
@@ -75,7 +78,7 @@ checkout.onsubmit=async e=>{
     const customer={
       customer_id:currentCustomer.id,name:currentCustomer.name,email:currentCustomer.email,
       phone:document.getElementById('phone').value,address:document.getElementById('address').value,
-      city:document.getElementById('city').value,country:document.getElementById('country').value
+      city:document.getElementById('city').value
     };
     const r=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer,items:cart.map(x=>({product_id:Number(x.product_id),quantity:Number(x.quantity)}))})});
     const d=await r.json();
