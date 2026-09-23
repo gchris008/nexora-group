@@ -183,16 +183,21 @@ app.post('/api/customer/register', customerAuthLimiter, async (req,res,next)=>{
     const password=typeof req.body.password==='string'?req.body.password:'';
     if(!validName(name)||!validUsername(username)||!validEmail(email)||password.length<12||password.length>200)
       return res.status(400).json({error:'Nom, nom d’utilisateur, e-mail ou mot de passe invalide. Le nom doit contenir au moins deux mots et le nom d’utilisateur 3 à 30 caractères.'});
-    const existing=await pool.query('SELECT id,password_hash FROM customers WHERE email=$1 OR LOWER(username)=LOWER($2)',[email,username]);
-    if(existing.rowCount && existing.rows[0].password_hash)
-      return res.status(409).json({error:'Cet e-mail ou ce nom d’utilisateur est déjà utilisé.'});
+    const existing=await pool.query('SELECT id FROM customers WHERE email=$1 OR LOWER(username)=LOWER($2) LIMIT 1',[email,username]);
+    if(existing.rowCount)
+      return res.status(409).json({error:'Ce compte existe déjà. Utilisez la connexion ou récupérez votre mot de passe.'});
     const hash=hashPassword(password);
-    const r=await pool.query(
-      `INSERT INTO customers(name,username,email,password_hash) VALUES($1,$2,$3,$4)
-       ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name,username=EXCLUDED.username,password_hash=EXCLUDED.password_hash,updated_at=NOW()
-       RETURNING id,name,username,email`,
-      [name,username,email,hash]
-    );
+    let r;
+    try {
+      r=await pool.query(
+        `INSERT INTO customers(name,username,email,password_hash) VALUES($1,$2,$3,$4)
+         RETURNING id,name,username,email`,
+        [name,username,email,hash]
+      );
+    } catch (e) {
+      if (e?.code === '23505') return res.status(409).json({error:'Ce compte existe déjà. Utilisez la connexion ou récupérez votre mot de passe.'});
+      throw e;
+    }
     const raw=randomToken(), expires=new Date(Date.now()+sessionHours*3600000);
     await pool.query('INSERT INTO customer_sessions(token_hash,customer_id,expires_at) VALUES($1,$2,$3)',[sha256(raw),r.rows[0].id,expires]);
     res.setHeader('Set-Cookie',`nexora_customer_session=${raw}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${sessionHours*3600}${isProd?'; Secure':''}`);
