@@ -6,7 +6,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 function fillProfile(c){
  currentCustomer=c;
  document.getElementById('identity').textContent=c.name+' · @'+c.username+' · '+c.email;
- document.getElementById('balance').textContent='Solde : '+money(c.balance_cents||0,'USD');
+ document.getElementById('balance').textContent='Solde : '+money(c.balance_cents||0,'HTG');
  document.getElementById('profileName').value=c.name||'';
  document.getElementById('profileUsername').value=c.username||'';
  document.getElementById('profileEmail').value=c.email||'';
@@ -30,11 +30,11 @@ async function load(){
 document.getElementById('profileForm')?.addEventListener('submit',async e=>{
  e.preventDefault();const msg=document.getElementById('profileMsg');msg.textContent='Envoi du code de vérification…';
  const data={name:profileName.value.trim(),username:profileUsername.value.trim(),email:profileEmail.value.trim(),phone:profilePhone.value.replace(/[\s().-]/g,''),address:profileAddress.value.trim(),city:profileCity.value.trim(),currentPassword:profilePassword.value};
- try{const r=await fetch('/api/customer/profile/request-verification',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const d=await r.json();if(!r.ok){msg.textContent=d.error||'Modification impossible.';return;}pendingProfile=d;document.getElementById('profileVerification').hidden=false;document.getElementById('profileVerificationText').textContent=d.message+' Numéro : '+d.phoneMasked+'.';document.getElementById('profileCode').focus();msg.textContent='';}catch{msg.textContent='Impossible de contacter le serveur.';}
+ try{const r=await fetch('/api/customer/profile/request-verification',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const d=await r.json();if(!r.ok){msg.textContent=d.error||'Modification impossible.';return;}pendingProfile=d;document.getElementById('profileVerification').hidden=false;document.getElementById('profileVerificationText').textContent=d.message+' Téléphone : '+d.phoneMasked+(d.emailVerificationRequired?' · E-mail : '+d.emailMasked:'')+'.';document.getElementById('emailVerificationField').hidden=!d.emailVerificationRequired;document.getElementById('profileCode').focus();msg.textContent='';}catch{msg.textContent='Impossible de contacter le serveur.';}
 });
 document.getElementById('profileVerificationForm')?.addEventListener('submit',async e=>{
  e.preventDefault();const msg=document.getElementById('profileVerificationMsg');msg.textContent='Vérification…';
- try{const r=await fetch('/api/customer/profile/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({purpose:pendingProfile.purpose,phone:pendingProfile.targetPhone,code:profileCode.value.trim()})});const d=await r.json();if(!r.ok){msg.textContent=d.error||'Code incorrect.';return;}fillProfile(d.customer);profilePassword.value='';document.getElementById('profileVerification').hidden=true;msg.textContent='';document.getElementById('profileMsg').textContent='Profil mis à jour et vérifié.';}catch{msg.textContent='Impossible de contacter le serveur.';}
+ try{const r=await fetch('/api/customer/profile/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({purpose:pendingProfile.purpose,phone:pendingProfile.targetPhone,phoneCode:profileCode.value.trim(),emailCode:document.getElementById('profileEmailCode').value.trim()})});const d=await r.json();if(!r.ok){msg.textContent=d.error||'Code incorrect.';return;}fillProfile(d.customer);profilePassword.value='';profileCode.value='';document.getElementById('profileEmailCode').value='';document.getElementById('emailVerificationField').hidden=true;document.getElementById('profileVerification').hidden=true;msg.textContent='';document.getElementById('profileMsg').textContent='Profil mis à jour et vérifié.';}catch{msg.textContent='Impossible de contacter le serveur.';}
 });
 document.getElementById('logout')?.addEventListener('click',async()=>{await fetch('/api/customer/logout',{method:'POST'});location.href='/';});
 load();
