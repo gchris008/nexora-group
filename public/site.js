@@ -20,7 +20,7 @@ async function updateAccountNav(){
     const r=await fetch('/api/customer/me',{credentials:'same-origin'});
     if(r.ok){
       const d=await r.json();
-      if(d?.customer){el.innerHTML='<a class="account-primary" href="/compte">Mon compte</a>';return;}
+      if(d?.customer){el.innerHTML='<a class="account-primary" href="/compte">@'+escapeHtml(d.customer.username)+'</a>';return;}
     }
   }catch{}
   el.innerHTML='<a href="/connexion">Connexion</a><a class="account-primary" href="/inscription">Créer un compte</a>';
