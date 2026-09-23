@@ -1,114 +1,26 @@
 const CART_KEY='nexora_cart';
-
-function escapeHtml(value){
-  return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function getCart(){try{return JSON.parse(localStorage.getItem(CART_KEY)||'[]');}catch{return [];}}
+function saveCart(cart){localStorage.setItem(CART_KEY,JSON.stringify(cart));updateCartCount();renderCartDrawer();}
+const NexoraTheme={get(){return localStorage.getItem('nexora_theme')||'dark'},apply(){const t=this.get();document.documentElement.dataset.theme=t;document.querySelectorAll('[data-theme-toggle]').forEach(b=>b.textContent=t==='dark'?'☼ / ☾':'☾ / ☼');},toggle(){localStorage.setItem('nexora_theme',this.get()==='dark'?'light':'dark');this.apply();}};
+window.NexoraTheme=NexoraTheme;NexoraTheme.apply();
+function openCart(){const d=document.getElementById('cartDrawer');if(!d)return;d.classList.add('open');d.setAttribute('aria-hidden','false');document.getElementById('cartBackdrop').hidden=false;document.body.classList.add('cart-open');renderCartDrawer();}
+function closeCart(){const d=document.getElementById('cartDrawer');if(!d)return;d.classList.remove('open');d.setAttribute('aria-hidden','true');document.getElementById('cartBackdrop').hidden=true;document.body.classList.remove('cart-open');}
+function renderCartDrawer(){
+ const items=document.getElementById('drawerCartItems'),totalEl=document.getElementById('drawerCartTotal');if(!items)return;
+ const cart=getCart();
+ const count=cart.reduce((s,x)=>s+Math.max(0,Number(x.quantity)||0),0);const floating=document.getElementById('floatingCartCount');if(floating)floating.textContent=count;
+ if(!cart.length){items.innerHTML='<div class="drawer-empty"><strong>Votre panier est vide.</strong><p>Ajoutez un produit depuis le catalogue.</p></div>';if(totalEl)totalEl.textContent='0.00';return;}
+ const currency=cart[0].currency||'USD',total=cart.reduce((s,x)=>s+Number(x.price_cents||0)*Number(x.quantity||0),0);
+ items.innerHTML=cart.map((x,i)=>'<div class="drawer-row"><div><strong>'+escapeHtml(x.name)+'</strong><small>'+x.quantity+' × '+(Number(x.price_cents)/100).toFixed(2)+' '+escapeHtml(x.currency)+'</small></div><div class="drawer-row-actions"><b>'+((Number(x.price_cents)*Number(x.quantity))/100).toFixed(2)+' '+escapeHtml(x.currency)+'</b><button type="button" data-remove-cart="'+i+'" aria-label="Retirer">×</button></div></div>').join('');
+ if(totalEl)totalEl.textContent=(total/100).toFixed(2)+' '+currency;
 }
-
-function getCart(){
-  try{return JSON.parse(localStorage.getItem(CART_KEY)||'[]');}catch{return [];}
-}
-
-function saveCart(cart){
-  localStorage.setItem(CART_KEY,JSON.stringify(cart));
-  updateCartCount();
-}
-
-async function updateAccountNav(){
-  const el=document.getElementById('accountLinks');
-  if(!el)return;
-  try{
-    const r=await fetch('/api/customer/me',{credentials:'same-origin'});
-    if(r.ok){
-      const d=await r.json();
-      if(d?.customer){el.innerHTML='<a class="account-primary" href="/compte">@'+escapeHtml(d.customer.username)+'</a>';return;}
-    }
-  }catch{}
-  el.innerHTML='<a href="/connexion">Connexion</a><a class="account-primary" href="/inscription">Créer un compte</a>';
-}
-
-function updateCartCount(){
-  const count=getCart().reduce((sum,item)=>sum+Math.max(0,Number(item.quantity)||0),0);
-  const link=document.getElementById('cartLink');
-  if(link) link.textContent='Panier ('+count+')';
-}
-
-async function loadSite(){
-  try{
-    const r=await fetch('/api/site');
-    if(!r.ok)return;
-    const d=await r.json();
-    document.title=d.company_name+' — '+d.tagline;
-    document.getElementById('tagline').textContent=d.tagline;
-    document.getElementById('heroText').textContent=d.hero_text;
-  }catch{}
-}
-
-async function loadCatalogue(){
-  const el=document.getElementById('catalogueList');
-  if(!el)return;
-  try{
-    const r=await fetch('/api/products');
-    if(!r.ok)throw new Error();
-    const items=await r.json();
-    if(!items.length){el.innerHTML='<p class="empty-state">Catalogue en préparation.</p>';return;}
-    el.innerHTML=items.map(p=>{
-      const stock=Number(p.stock_quantity)||0;
-      const image=p.image_url&&/^https:\/\//i.test(p.image_url)
-        ? '<img class="product-image" src="'+escapeHtml(p.image_url)+'" alt="'+escapeHtml(p.name)+'" loading="lazy">'
-        : '<div class="product-image placeholder" aria-hidden="true">NEXORA</div>';
-      return '<article class="product-card">'+image+
-        '<div class="product-body">'+
-        (p.category?'<span class="product-category">'+escapeHtml(p.category)+'</span>':'')+
-        '<h3>'+escapeHtml(p.name)+'</h3>'+
-        (p.sku?'<small>Réf. '+escapeHtml(p.sku)+'</small>':'')+
-        '<p>'+escapeHtml(p.description)+'</p>'+
-        '<div class="product-meta"><strong>'+(Number(p.price_cents)/100).toFixed(2)+' '+escapeHtml(p.currency)+'</strong><span class="'+(stock>0?'in-stock':'out-stock')+'">'+(stock>0?(stock+' en stock'):'Rupture de stock')+'</span></div>'+
-        '<button class="btn gold" data-product="'+encodeURIComponent(JSON.stringify(p))+'" '+(stock>0?'':'disabled')+'>'+(stock>0?'Ajouter au panier':'Indisponible')+'</button>'+
-        '</div></article>';
-    }).join('');
-  }catch{el.innerHTML='<p class="empty-state">Le catalogue est temporairement indisponible.</p>';}
-}
-
-function addToCart(product){
-  const cart=getCart();
-  const stock=Math.max(0,Number(product.stock_quantity)||0);
-  const index=cart.findIndex(x=>x.product_id===Number(product.id));
-  if(index>=0){
-    if(cart[index].quantity>=stock){alert('La quantité disponible pour ce produit est atteinte.');return;}
-    cart[index].quantity+=1;
-    cart[index].stock_quantity=stock;
-  }else{
-    cart.push({
-      product_id:Number(product.id),name:product.name,price_cents:Number(product.price_cents),
-      currency:product.currency,quantity:1,sku:product.sku||'',category:product.category||'',
-      image_url:product.image_url||'',stock_quantity:stock
-    });
-  }
-  saveCart(cart);
-  alert('Produit ajouté au panier.');
-}
-
-const contactForm=document.getElementById('contactForm');
-if(contactForm)contactForm.addEventListener('submit',async e=>{
-  e.preventDefault();
-  const status=document.getElementById('status');
-  status.textContent='Envoi…';
-  try{
-    const body={name:document.getElementById('name').value,email:document.getElementById('email').value,message:document.getElementById('message').value};
-    const r=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d=await r.json();
-    status.textContent=d.message||d.error||'Une erreur est survenue.';
-    if(r.ok)e.target.reset();
-  }catch{status.textContent='Impossible de contacter le serveur.';}
-});
-
-document.addEventListener('click',e=>{
-  const button=e.target.closest('[data-product]');
-  if(!button)return;
-  try{addToCart(JSON.parse(decodeURIComponent(button.dataset.product)));}catch{}
-});
-
-updateCartCount();
-updateAccountNav();
-loadSite();
-loadCatalogue();
+function updateCartCount(){const count=getCart().reduce((sum,item)=>sum+Math.max(0,Number(item.quantity)||0),0);const link=document.getElementById('cartLink');if(link)link.textContent='Panier ('+count+')';renderCartDrawer();}
+async function updateAccountNav(){const el=document.getElementById('accountLinks');if(!el)return;try{const r=await fetch('/api/customer/me',{credentials:'same-origin'});if(r.ok){const d=await r.json();if(d?.customer){el.innerHTML='<a class="account-primary" href="/compte">@'+escapeHtml(d.customer.username)+'</a>';return;}}}catch{}el.innerHTML='<a href="/connexion">Connexion</a><a class="account-primary" href="/inscription">Créer un compte</a>';}
+async function loadSite(){try{const r=await fetch('/api/site');if(!r.ok)return;const d=await r.json();document.title=d.company_name+' — '+d.tagline;document.getElementById('tagline').textContent=d.tagline;document.getElementById('heroText').textContent=d.hero_text;}catch{}}
+async function loadCatalogue(){const el=document.getElementById('catalogueList');if(!el)return;try{const r=await fetch('/api/products');if(!r.ok)throw new Error();const items=await r.json();if(!items.length){el.innerHTML='<p class="empty-state">Catalogue en préparation.</p>';return;}el.innerHTML=items.map(p=>{const stock=Number(p.stock_quantity)||0;const image=p.image_url&&/^https:\/\//i.test(p.image_url)?'<img class="product-image" src="'+escapeHtml(p.image_url)+'" alt="'+escapeHtml(p.name)+'" loading="lazy">':'<div class="product-image placeholder" aria-hidden="true">NEXORA</div>';return '<article class="product-card">'+image+'<div class="product-body">'+(p.category?'<span class="product-category">'+escapeHtml(p.category)+'</span>':'')+'<h3>'+escapeHtml(p.name)+'</h3>'+(p.sku?'<small>Réf. '+escapeHtml(p.sku)+'</small>':'')+'<p>'+escapeHtml(p.description)+'</p><div class="product-meta"><strong>'+(Number(p.price_cents)/100).toFixed(2)+' '+escapeHtml(p.currency)+'</strong><span class="'+(stock>0?'in-stock':'out-stock')+'">'+(stock>0?(stock+' en stock'):'Rupture de stock')+'</span></div><button class="btn gold" data-product="'+encodeURIComponent(JSON.stringify(p))+'" '+(stock>0?'':'disabled')+'>'+(stock>0?'Ajouter au panier':'Indisponible')+'</button></div></article>';}).join('');}catch{el.innerHTML='<p class="empty-state">Le catalogue est temporairement indisponible.</p>';}}
+function addToCart(product){const cart=getCart(),stock=Math.max(0,Number(product.stock_quantity)||0),index=cart.findIndex(x=>x.product_id===Number(product.id));if(index>=0){if(cart[index].quantity>=stock){alert('La quantité disponible pour ce produit est atteinte.');return;}cart[index].quantity+=1;cart[index].stock_quantity=stock;}else{cart.push({product_id:Number(product.id),name:product.name,price_cents:Number(product.price_cents),currency:product.currency,quantity:1,sku:product.sku||'',category:product.category||'',image_url:product.image_url||'',stock_quantity:stock});}saveCart(cart);openCart();}
+const contactForm=document.getElementById('contactForm');if(contactForm)contactForm.addEventListener('submit',async e=>{e.preventDefault();const status=document.getElementById('status');status.textContent='Envoi…';try{const body={name:document.getElementById('name').value,email:document.getElementById('email').value,message:document.getElementById('message').value};const r=await fetch('/api/contact',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json();status.textContent=d.message||d.error||'Une erreur est survenue.';if(r.ok)e.target.reset();}catch{status.textContent='Impossible de contacter le serveur.';}});
+document.addEventListener('click',e=>{const button=e.target.closest('[data-product]');if(button){try{addToCart(JSON.parse(decodeURIComponent(button.dataset.product)));}catch{}}const remove=e.target.closest('[data-remove-cart]');if(remove){const cart=getCart();cart.splice(Number(remove.dataset.removeCart),1);saveCart(cart);}if(e.target.closest('#floatingCart,#cartLink')){e.preventDefault();openCart();}if(e.target.closest('#closeCart,#cartBackdrop'))closeCart();if(e.target.closest('[data-theme-toggle]'))NexoraTheme.toggle();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeCart();});
+updateCartCount();updateAccountNav();loadSite();loadCatalogue();
