@@ -56,3 +56,6 @@ html[data-theme="light"] .drawer-close,html[data-theme="light"] .drawer-row-acti
 html[data-theme="light"] .drawer-row small,html[data-theme="light"] .drawer-empty{color:#656b75}
 body.cart-open{overflow:hidden}
 @media(max-width:750px){.theme-toggle{justify-self:start}.floating-cart{right:16px;bottom:16px}.cart-drawer{padding:20px}}
+
+.quantity-row{display:flex;align-items:end;gap:12px;margin-top:18px}.quantity-row label{display:grid;gap:6px;color:#a4a8b2;font-size:12px}.product-quantity{width:82px;background:#111318;border:1px solid #ffffff20;border-radius:9px;color:#fff;padding:12px;font:inherit}.quantity-row .btn{flex:1}@media(max-width:750px){.quantity-row{align-items:stretch}.quantity-row .btn{flex:1}.product-quantity{width:78px}}
+html[data-theme="light"] .product-quantity{background:#fff;color:#17181c;border-color:#00000018}
