@@ -68,14 +68,15 @@ function maskPhone(value) { const v=String(value||''); return v.length<=6 ? v : 
 function validName(value) { return /^[\p{L}]+(?:[ '\u2019-][\p{L}]+){1,5}$/u.test(value); }
 function validUsername(value) { return /^[a-zA-Z0-9](?:[a-zA-Z0-9._-]{2,29})$/.test(value); }
 function parseBoolean(value) { if (value === true || value === false) return value; if (value === 'true') return true; if (value === 'false') return false; return null; }
-function emailConfigured() { return Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL); }
+function emailConfigured() { return Boolean(process.env.RESEND_API_KEY); }
+function resendFromEmail() { return process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'; }
 function publicAppUrl() { return (process.env.PUBLIC_APP_URL || 'https://nexora-group.vercel.app').replace(/\/$/,''); }
 function hashVerificationCode(code) { return sha256(String(code)); }
 function randomVerificationCode() { return String(crypto.randomInt(100000,1000000)); }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 async function sendEmail({to,subject,html}) {
   if (!emailConfigured()) throw Object.assign(new Error('La vérification par e-mail n’est pas encore configurée.'), {statusCode:503});
-  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+process.env.RESEND_API_KEY},body:JSON.stringify({from:process.env.RESEND_FROM_EMAIL,to:[to],subject,html})});
+  const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+process.env.RESEND_API_KEY},body:JSON.stringify({from:resendFromEmail(),to:[to],subject,html})});
   const data=await response.json().catch(()=>({}));
   if(!response.ok) throw Object.assign(new Error(data.message||'Impossible d’envoyer l’e-mail.'),{statusCode:502});
   return data;
@@ -571,7 +572,7 @@ app.post('/api/admin/customers/:id/delete-confirm',auth,csrf,requireRole('admin'
   const c=await pool.connect();
   try{
     const id=Number(req.params.id), code=safeText(req.body.code,20);
-    if(!Number.isInteger(id)||!/^d{6}$/.test(code))return res.status(400).json({error:'Code de confirmation invalide.'});
+    if(!Number.isInteger(id)||!/^[0-9]{6}$/.test(code))return res.status(400).json({error:'Code de confirmation invalide.'});
     await c.query('BEGIN');
     const vr=await c.query("SELECT id,code_hash,attempts FROM admin_customer_delete_codes WHERE admin_id=$1 AND customer_id=$2 AND consumed_at IS NULL AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1 FOR UPDATE",[req.auth.admin_id,id]);
     if(!vr.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Code expiré ou introuvable. Demandez un nouveau code.'});}
