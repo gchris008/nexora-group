@@ -198,7 +198,8 @@ document.addEventListener('click',e=>{
   if(e.target.closest('#closeAccount')){closeAccount();return;}
   if(e.target.closest('#closeCart')){closeCart();return;}
   if(e.target.id==='cartBackdrop'){closeCart();closeAccount();return;}
-  const card=e.target.closest('[data-product-link]');if(card&&!e.target.closest('button,input,a')){navigate(card.dataset.productLink.slice(1));return;}\n  if(e.target.closest('[data-theme-toggle]'))NexoraTheme.toggle();
+  const card=e.target.closest('[data-product-link]');if(card&&!e.target.closest('button,input,a')){navigate(card.dataset.productLink.slice(1));return;}
+  if(e.target.closest('[data-theme-toggle]'))NexoraTheme.toggle();
   const form=e.target.closest('.contact-form');if(form&&e.target.matches('button')){e.preventDefault();sendContact(form);}
 });
 
