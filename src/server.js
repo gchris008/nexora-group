@@ -261,21 +261,14 @@ app.post('/api/customer/register', customerAuthLimiter, async (req,res,next)=>{
     const name=safeText(req.body.name,120), username=safeText(req.body.username,30).toLowerCase(), email=safeText(req.body.email,160).toLowerCase(), phone=normalizePhone(req.body.phone);
     const password=typeof req.body.password==='string'?req.body.password:'';
     if(!validName(name)||!validUsername(username)||!validEmail(email)||!validPhone(phone)||password.length<12||password.length>200)return res.status(400).json({error:'Nom, nom d’utilisateur, e-mail, téléphone ou mot de passe invalide.'});
-    if(!emailConfigured()) return res.status(503).json({error:'La vérification par e-mail n’est pas encore configurée. Configurez RESEND_API_KEY et RESEND_FROM_EMAIL dans Vercel.'});
-    const existing=await pool.query('SELECT id,active,email_verified_at FROM customers WHERE email=$1 OR LOWER(username)=LOWER($2) LIMIT 1',[email,username]);
-    if(existing.rowCount) return res.status(409).json({error:existing.rows[0].email_verified_at?'Ce compte existe déjà. Utilisez la connexion ou réinitialisez votre mot de passe.':'Une inscription existe déjà avec ces informations. Vérifiez votre e-mail.'});
+    const existing=await pool.query('SELECT id FROM customers WHERE email=$1 OR LOWER(username)=LOWER($2) LIMIT 1',[email,username]);
+    if(existing.rowCount) return res.status(409).json({error:'Ce compte existe déjà. Utilisez la connexion ou réinitialisez votre mot de passe.'});
     const hash=hashPassword(password);
-    const customer=(await pool.query('INSERT INTO customers(name,username,email,password_hash,phone,active,email_verified_at) VALUES($1,$2,$3,$4,$5,FALSE,NULL) RETURNING id,name,username,email,phone',[name,username,email,hash,phone])).rows[0];
-    const code=randomVerificationCode();
-    await pool.query('INSERT INTO customer_email_verifications(customer_id,purpose,email,code_hash,expires_at) VALUES($1,\'registration\',$2,$3,NOW()+INTERVAL \'10 minutes\')',[customer.id,email,hashVerificationCode(code)]);
-    try {
-      await sendEmail({to:email,subject:'NEXORA GROUP — Vérification de votre compte',html:'<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>NEXORA GROUP</h2><p>Bonjour '+escapeHtml(name)+',</p><p>Votre code de vérification est :</p><p style="font-size:32px;font-weight:700;letter-spacing:8px">'+code+'</p><p>Ce code expire dans 10 minutes.</p><p>Si vous n’êtes pas à l’origine de cette inscription, ignorez cet e-mail.</p></div>'});
-    } catch(e) {
-      await pool.query('DELETE FROM customer_email_verifications WHERE customer_id=$1',[customer.id]).catch(()=>{});
-      await pool.query('DELETE FROM customers WHERE id=$1 AND active=FALSE',[customer.id]).catch(()=>{});
-      throw e;
-    }
-    res.status(201).json({verificationRequired:true,customerId:customer.id,email,message:'Un code de vérification a été envoyé à votre adresse e-mail.'});
+    const customer=(await pool.query('INSERT INTO customers(name,username,email,password_hash,phone,active,email_verified_at) VALUES($1,$2,$3,$4,$5,TRUE,NOW()) RETURNING id,name,username,email,phone',[name,username,email,hash,phone])).rows[0];
+    const raw=randomToken(),expires=new Date(Date.now()+sessionHours*3600000);
+    await pool.query('INSERT INTO customer_sessions(token_hash,customer_id,expires_at) VALUES($1,$2,$3)',[sha256(raw),customer.id,expires]);
+    res.setHeader('Set-Cookie','nexora_customer_session='+raw+'; Path=/; HttpOnly; SameSite=Strict; Max-Age='+sessionHours*3600+(isProd?'; Secure':''));
+    res.status(201).json({verificationRequired:false,customerId:customer.id,email:customer.email,customer:{id:customer.id,name:customer.name,username:customer.username,email:customer.email,phone:customer.phone},message:'Compte créé avec succès.'});
   } catch(e){
     console.error('customer_register_error',{name:e?.name,code:e?.code,message:e?.message});
     if(e?.code==='23505') return res.status(409).json({error:'Ce compte existe déjà. Utilisez la connexion ou réinitialisez votre mot de passe.'});
@@ -323,12 +316,14 @@ app.post('/api/customer/resend-registration', customerAuthLimiter, async(req,res
 app.post('/api/customer/login', customerAuthLimiter, async(req,res,next)=>{
   try {
     await ensureCustomerAuthSchema();
-    const identifier=safeText(req.body.identifier||req.body.email,160).toLowerCase(), password=typeof req.body.password==='string'?req.body.password:'';
+    const rawIdentifier=safeText(req.body.identifier||req.body.email,160);
+    const identifier=rawIdentifier.toLowerCase();
+    const phoneIdentifier=normalizePhone(rawIdentifier);
+    const password=typeof req.body.password==='string'?req.body.password:'';
     if(!identifier||password.length<12)return res.status(400).json({error:'Identifiants invalides.'});
-    const r=await pool.query('SELECT id,name,username,email,password_hash,active,email_verified_at FROM customers WHERE LOWER(email)=LOWER($1) OR LOWER(username)=LOWER($1)',[identifier]);
-    if(!r.rowCount||!r.rows[0].password_hash||!verifyPassword(password,r.rows[0].password_hash))return res.status(401).json({error:'E-mail ou mot de passe incorrect.'});
+    const r=await pool.query('SELECT id,name,username,email,password_hash,active,email_verified_at FROM customers WHERE LOWER(email)=LOWER($1) OR LOWER(username)=LOWER($1) OR phone=$2 LIMIT 1',[identifier,phoneIdentifier]);
+    if(!r.rowCount||!r.rows[0].password_hash||!verifyPassword(password,r.rows[0].password_hash))return res.status(401).json({error:'E-mail, numéro ou nom d’utilisateur incorrect.'});
     if(!r.rows[0].active)return res.status(403).json({error:'Ce compte est désactivé.'});
-    if(!r.rows[0].email_verified_at)return res.status(403).json({error:'Votre adresse e-mail n’est pas encore vérifiée. Vérifiez votre boîte de réception ou demandez un nouveau code.'});
     const raw=randomToken(),expires=new Date(Date.now()+sessionHours*3600000);
     await pool.query('INSERT INTO customer_sessions(token_hash,customer_id,expires_at) VALUES($1,$2,$3)',[sha256(raw),r.rows[0].id,expires]);
     res.setHeader('Set-Cookie','nexora_customer_session='+raw+'; Path=/; HttpOnly; SameSite=Strict; Max-Age='+sessionHours*3600+(isProd?'; Secure':''));
