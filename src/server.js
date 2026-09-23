@@ -137,6 +137,23 @@ app.get('/api/products', async (_req,res,next)=>{
   try { await ensureProductSchema(); const r=await pool.query('SELECT id,name,description,price_cents,currency,sku,category,image_url,stock_quantity,domain,featured FROM products WHERE active=TRUE ORDER BY created_at DESC'); res.json(r.rows); } catch(e){next(e);}
 });
 
+app.get('/api/products/featured', async (_req,res,next)=>{
+  try {
+    await ensureProductSchema();
+    const r=await pool.query(`
+      SELECT DISTINCT ON (domain)
+        id,name,description,price_cents,currency,sku,category,image_url,stock_quantity,domain,featured
+      FROM products
+      WHERE active=TRUE
+        AND domain IN ('commerce','distribution','technologie','international')
+      ORDER BY domain, created_at ASC, id ASC
+    `);
+    const order=['commerce','distribution','technologie','international'];
+    r.rows.sort((a,b)=>order.indexOf(a.domain)-order.indexOf(b.domain));
+    res.json(r.rows);
+  } catch(e) { next(e); }
+});
+
 app.get('/api/site', async (_req,res,next)=>{
   try {
     const r=await pool.query('SELECT company_name,tagline,hero_text,contact_email FROM site_content WHERE id=1');
