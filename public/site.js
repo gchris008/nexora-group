@@ -102,7 +102,7 @@ const pageData={
 function productCard(p){
   const stock=Math.max(0,Number(p.stock_quantity)||0);
   const image=p.image_url&&(/^(https:\/\/|data:image\/)/i.test(p.image_url))?'<img class="product-image" src="'+escapeHtml(p.image_url)+'" alt="'+escapeHtml(p.name)+'" loading="lazy">':'<div class="product-image placeholder" aria-hidden="true">NEXORA</div>';
-  const target='/'+(p.domain||productDomain(p));
+  const target='/'+(['commerce','distribution','technologie','international'].includes(p.domain)?p.domain:productDomain(p));
   return '<article class="product-card" data-product-link="'+escapeHtml(target)+'" role="link" tabindex="0">'+image+'<div class="product-body">'+
     (p.category?'<span class="product-category">'+escapeHtml(p.category)+'</span>':'')+
     '<h3>'+escapeHtml(p.name)+'</h3>'+
