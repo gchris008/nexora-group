@@ -1,17 +1,4 @@
-const form=document.getElementById('login');
-let pending=null;
-form.addEventListener('submit',async e=>{
- e.preventDefault();const msg=document.getElementById('msg');msg.textContent='Connexion…';
- try{
-  const r=await fetch('/api/customer/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:document.getElementById('identifier').value,password:document.getElementById('password').value})});
-  const d=await r.json();
-  if(r.status===403&&d.verificationRequired){
-   pending={customerId:d.customerId,phone:d.phone};document.getElementById('verificationBox').hidden=false;document.getElementById('verificationText').textContent='Un code a été envoyé au '+d.phoneMasked+'.';document.getElementById('verificationCode').focus();msg.textContent='Vérification du téléphone requise.';return;
-  }
-  if(!r.ok){msg.textContent=d.error||'Connexion impossible.';return;}location.href='/compte';
- }catch{msg.textContent='Impossible de contacter le serveur.';}
-});
-document.getElementById('verificationForm')?.addEventListener('submit',async e=>{
- e.preventDefault();const msg=document.getElementById('verificationMsg');msg.textContent='Vérification…';
- try{const r=await fetch('/api/customer/verify-login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer_id:pending.customerId,phone:pending.phone,code:document.getElementById('verificationCode').value.trim()})});const d=await r.json();if(!r.ok){msg.textContent=d.error||'Code incorrect.';return;}location.href='/compte';}catch{msg.textContent='Impossible de contacter le serveur.';}
-});
+const themeKey='nexora_theme';const applyTheme=()=>{const t=localStorage.getItem(themeKey)||'dark';document.documentElement.dataset.theme=t;document.querySelectorAll('[data-theme-toggle]').forEach(b=>b.textContent=t==='dark'?'☼ / ☾':'☾ / ☼');};applyTheme();document.querySelector('[data-theme-toggle]')?.addEventListener('click',()=>{localStorage.setItem(themeKey,(localStorage.getItem(themeKey)||'dark')==='dark'?'light':'dark');applyTheme();});
+document.getElementById('login').addEventListener('submit',async e=>{e.preventDefault();const msg=document.getElementById('msg');msg.textContent='Connexion…';try{const r=await fetch('/api/customer/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:document.getElementById('identifier').value,password:document.getElementById('password').value})});const d=await r.json();if(!r.ok){msg.textContent=d.error||'Connexion impossible.';return;}location.href='/compte';}catch{msg.textContent='Impossible de contacter le serveur.';}});
+document.getElementById('resetRequest')?.addEventListener('submit',async e=>{e.preventDefault();const msg=document.getElementById('resetMsg');msg.textContent='Envoi…';const email=document.getElementById('resetEmail').value.trim();try{const r=await fetch('/api/customer/password-reset/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});const d=await r.json();if(!r.ok){msg.textContent=d.error||'Impossible d’envoyer le code.';return;}document.getElementById('resetEmail2').value=email;document.getElementById('resetBox').hidden=false;document.getElementById('resetRequest').hidden=true;msg.textContent=d.message||'Code envoyé.';}catch{msg.textContent='Impossible de contacter le serveur.';}});
+document.getElementById('resetForm')?.addEventListener('submit',async e=>{e.preventDefault();const msg=document.getElementById('resetVerifyMsg');msg.textContent='Réinitialisation…';try{const r=await fetch('/api/customer/password-reset/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.getElementById('resetEmail2').value.trim(),code:document.getElementById('resetCode').value.trim(),newPassword:document.getElementById('resetPassword').value})});const d=await r.json();if(!r.ok){msg.textContent=d.error||'Impossible de réinitialiser le mot de passe.';return;}msg.textContent=d.message||'Mot de passe réinitialisé.';document.getElementById('resetBox').hidden=true;document.getElementById('login').hidden=false;}catch{msg.textContent='Impossible de contacter le serveur.';}});
