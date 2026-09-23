@@ -589,28 +589,16 @@ app.get('/api/admin/customers/:id/history',auth,requireRole('admin','manager','e
 });
 
 const customerDeleteLimiter = rateLimit({windowMs:15*60*1000,limit:5,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Trop de demandes de suppression. Réessayez plus tard.'}});
-app.post('/api/admin/customers/:id/delete-request',auth,csrf,requireRole('admin'),customerDeleteLimiter,async(req,res,next)=>{
-  try{
-    const id=Number(req.params.id); if(!Number.isInteger(id))return res.status(400).json({error:'Client invalide.'});
-    const customer=(await pool.query('SELECT id,name,email FROM customers WHERE id=$1',[id])).rows[0]; if(!customer)return res.status(404).json({error:'Client introuvable.'});
-    await pool.query("CREATE TABLE IF NOT EXISTS admin_customer_delete_codes (id BIGSERIAL PRIMARY KEY,admin_id BIGINT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,customer_id BIGINT NOT NULL,code_hash TEXT NOT NULL,expires_at TIMESTAMPTZ NOT NULL,attempts INT NOT NULL DEFAULT 0,consumed_at TIMESTAMPTZ,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
-    const code=randomVerificationCode();
-    await pool.query("UPDATE admin_customer_delete_codes SET consumed_at=NOW() WHERE admin_id=$1 AND customer_id=$2 AND consumed_at IS NULL",[req.auth.admin_id,id]);
-    await pool.query("INSERT INTO admin_customer_delete_codes(admin_id,customer_id,code_hash,expires_at) VALUES($1,$2,$3,NOW()+INTERVAL '10 minutes')",[req.auth.admin_id,id,hashVerificationCode(code)]);
-    await sendEmail({to:req.auth.email,subject:'NEXORA GROUP — Code de suppression',html:'<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2>NEXORA GROUP</h2><p>Demande de suppression du compte <b>'+escapeHtml(customer.name)+'</b> ('+escapeHtml(customer.email)+').</p><p>Code de confirmation :</p><p style="font-size:32px;font-weight:700;letter-spacing:8px">'+code+'</p><p>Ce code expire dans 10 minutes.</p></div>'});
-    res.json({message:'Code envoyé à votre e-mail administrateur.'});
-  }catch(e){next(e);}
-});
-app.post('/api/admin/customers/:id/delete-confirm',auth,csrf,requireRole('admin'),customerDeleteLimiter,async(req,res,next)=>{
+app.post('/api/admin/customers/:id/delete',auth,csrf,requireRole('admin'),customerDeleteLimiter,async(req,res,next)=>{
   const c=await pool.connect();
   try{
-    const id=Number(req.params.id), code=safeText(req.body.code,20);
-    if(!Number.isInteger(id)||!/^[0-9]{6}$/.test(code))return res.status(400).json({error:'Code de confirmation invalide.'});
+    const id=Number(req.params.id), deletePassword=typeof req.body.deletePassword==='string'?req.body.deletePassword:'';
+    const configuredPassword=process.env.NEXORA_DELETE_PASSWORD||'';
+    if(!Number.isInteger(id))return res.status(400).json({error:'Client invalide.'});
+    if(!configuredPassword)return res.status(503).json({error:'La suppression sécurisée n’est pas configurée.'});
+    const suppliedHash=sha256(deletePassword), configuredHash=sha256(configuredPassword);
+    if(!crypto.timingSafeEqual(Buffer.from(suppliedHash,'hex'),Buffer.from(configuredHash,'hex')))return res.status(403).json({error:'Mot de passe de suppression incorrect.'});
     await c.query('BEGIN');
-    const vr=await c.query("SELECT id,code_hash,attempts FROM admin_customer_delete_codes WHERE admin_id=$1 AND customer_id=$2 AND consumed_at IS NULL AND expires_at>NOW() ORDER BY created_at DESC LIMIT 1 FOR UPDATE",[req.auth.admin_id,id]);
-    if(!vr.rowCount){await c.query('ROLLBACK');return res.status(400).json({error:'Code expiré ou introuvable. Demandez un nouveau code.'});}
-    const v=vr.rows[0]; if(v.attempts>=5){await c.query('ROLLBACK');return res.status(429).json({error:'Trop de tentatives. Demandez un nouveau code.'});}
-    if(hashVerificationCode(code)!==v.code_hash){await c.query('UPDATE admin_customer_delete_codes SET attempts=attempts+1 WHERE id=$1',[v.id]);await c.query('COMMIT');return res.status(400).json({error:'Code incorrect.'});}
     if(!(await c.query('SELECT id FROM customers WHERE id=$1',[id])).rowCount){await c.query('ROLLBACK');return res.status(404).json({error:'Client introuvable.'});}
     await c.query('DELETE FROM customer_sessions WHERE customer_id=$1',[id]);
     await c.query('DELETE FROM customer_email_verifications WHERE customer_id=$1',[id]);
@@ -619,8 +607,9 @@ app.post('/api/admin/customers/:id/delete-confirm',auth,csrf,requireRole('admin'
     await c.query('DELETE FROM payments WHERE order_id IN (SELECT id FROM orders WHERE customer_id=$1)',[id]);
     await c.query('DELETE FROM orders WHERE customer_id=$1',[id]);
     await c.query('DELETE FROM customers WHERE id=$1',[id]);
-    await c.query('UPDATE admin_customer_delete_codes SET consumed_at=NOW() WHERE id=$1',[v.id]);
-    await c.query('COMMIT'); await audit(req,'delete','customer',id); res.json({message:'Utilisateur supprimé définitivement.'});
+    await c.query('COMMIT');
+    await audit(req,'delete','customer',id);
+    res.json({message:'Utilisateur supprimé définitivement.'});
   }catch(e){await c.query('ROLLBACK').catch(()=>{});next(e)}finally{c.release();}
 });
 app.put('/api/admin/customers/:id/status',auth,csrf,requireRole('admin','manager'),async(req,res,next)=>{
