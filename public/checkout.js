@@ -10,6 +10,19 @@ function saveCart(cart){localStorage.setItem(CART_KEY,JSON.stringify(cart));}
 function money(cents,currency){return (Number(cents)/100).toFixed(2)+' '+esc(currency);}
 
 let cart=getCart();
+let currentCustomer=null;
+
+async function loadCustomer(){
+  const r=await fetch('/api/customer/me',{credentials:'same-origin'});
+  if(!r.ok)return false;
+  const d=await r.json();
+  if(!d.customer)return false;
+  currentCustomer=d.customer;
+  document.getElementById('name').value=d.customer.name||'';
+  document.getElementById('email').value=d.customer.email||'';
+  document.getElementById('memberIdentity').textContent='Commande pour @'+d.customer.username+' — vos informations de compte sont utilisées automatiquement.';
+  return true;
+}
 
 async function refreshCartFromServer(){
   const r=await fetch('/api/products');
@@ -57,8 +70,9 @@ checkout.onsubmit=async e=>{
   status.textContent='Création de la commande…';
   try{
     if(!cart.length)throw new Error('Votre panier est vide.');
+    if(!currentCustomer) throw new Error('Connectez-vous pour passer une commande.');
     const customer={
-      name:document.getElementById('name').value,email:document.getElementById('email').value,
+      customer_id:currentCustomer.id,name:currentCustomer.name,email:currentCustomer.email,
       phone:document.getElementById('phone').value,address:document.getElementById('address').value,
       city:document.getElementById('city').value,country:document.getElementById('country').value
     };
@@ -78,6 +92,12 @@ checkout.onsubmit=async e=>{
 
 (async()=>{
   try{
+    if(!await loadCustomer()){
+      status.textContent='Connectez-vous à votre compte pour finaliser votre commande.';
+      checkout.hidden=true;
+      renderSummary();
+      return;
+    }
     const warnings=await refreshCartFromServer();
     renderSummary();
     if(warnings.length)status.textContent=warnings.join(' ');
