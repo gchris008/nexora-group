@@ -121,7 +121,7 @@ function csrf(req,res,next) {
 }
 
 app.get('/api/products', async (_req,res,next)=>{
-  try { const r=await pool.query('SELECT id,name,description,price_cents,currency,sku,category,image_url,stock_quantity FROM products WHERE active=TRUE ORDER BY created_at DESC'); res.json(r.rows); } catch(e){next(e);}
+  try { const r=await pool.query('SELECT id,name,description,price_cents,currency,sku,category,image_url,stock_quantity,domain,featured FROM products WHERE active=TRUE ORDER BY created_at DESC'); res.json(r.rows); } catch(e){next(e);}
 });
 
 app.get('/api/site', async (_req,res,next)=>{
@@ -501,17 +501,17 @@ app.get('/api/admin/products',auth,async(req,res,next)=>{
 
 app.post('/api/admin/products',auth,csrf,requireRole('admin','manager'),async(req,res,next)=>{
   try{
-    const name=safeText(req.body.name,160),description=safeText(req.body.description,2000),currency=safeText(req.body.currency,3).toUpperCase(),price=Number(req.body.price_cents),stock=Number(req.body.stock_quantity),sku=safeText(req.body.sku,80),category=safeText(req.body.category,100),imageUrl=safeText(req.body.image_url,1800000);
-    if(!name||!Number.isInteger(price)||price<0||!Number.isInteger(stock)||stock<0||!/^[A-Z]{3}$/.test(currency)|| (imageUrl && !(/^https:\/\//i.test(imageUrl)||/^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/i.test(imageUrl)))) return res.status(400).json({error:'Produit invalide.'});
-    const r=await pool.query('INSERT INTO products(name,description,price_cents,currency,sku,category,image_url,stock_quantity) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',[name,description,price,currency,sku||null,category,imageUrl,stock]);await audit(req,'create','product',r.rows[0].id); res.status(201).json(r.rows[0]);
+    const name=safeText(req.body.name,160),description=safeText(req.body.description,2000),currency=safeText(req.body.currency,3).toUpperCase(),price=Number(req.body.price_cents),stock=Number(req.body.stock_quantity),sku=safeText(req.body.sku,80),category=safeText(req.body.category,100),domain=safeText(req.body.domain,30),featured=parseBoolean(req.body.featured),imageUrl=safeText(req.body.image_url,1800000);
+    if(!name||!['commerce','distribution','technologie','international'].includes(domain)||featured===null||!Number.isInteger(price)||price<0||!Number.isInteger(stock)||stock<0||!/^[A-Z]{3}$/.test(currency)|| (imageUrl && !(/^https:\/\//i.test(imageUrl)||/^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/i.test(imageUrl)))) return res.status(400).json({error:'Produit invalide.'});
+    const r=await pool.query('INSERT INTO products(name,description,price_cents,currency,sku,category,image_url,stock_quantity,domain,featured) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',[name,description,price,currency,sku||null,category,imageUrl,stock,domain,featured]);await audit(req,'create','product',r.rows[0].id); res.status(201).json(r.rows[0]);
   }catch(e){next(e);}
 });
 
 app.put('/api/admin/products/:id',auth,csrf,requireRole('admin','manager'),async(req,res,next)=>{
   try{
-    const id=Number(req.params.id),name=safeText(req.body.name,160),description=safeText(req.body.description,2000),currency=safeText(req.body.currency,3).toUpperCase(),price=Number(req.body.price_cents),active=parseBoolean(req.body.active),stock=Number(req.body.stock_quantity),sku=safeText(req.body.sku,80),category=safeText(req.body.category,100),imageUrl=safeText(req.body.image_url,1800000);
-    if(!Number.isInteger(id)||!name||!Number.isInteger(price)||price<0||active===null||!Number.isInteger(stock)||stock<0||!/^[A-Z]{3}$/.test(currency)||(imageUrl&& !(/^https:\/\//i.test(imageUrl)||/^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/i.test(imageUrl)))) return res.status(400).json({error:'Produit invalide.'});
-    const r=await pool.query('UPDATE products SET name=$1,description=$2,price_cents=$3,currency=$4,sku=$5,category=$6,image_url=$7,stock_quantity=$8,active=$9,updated_at=NOW() WHERE id=$10 RETURNING *',[name,description,price,currency,sku||null,category,imageUrl,stock,active,id]);
+    const id=Number(req.params.id),name=safeText(req.body.name,160),description=safeText(req.body.description,2000),currency=safeText(req.body.currency,3).toUpperCase(),price=Number(req.body.price_cents),active=parseBoolean(req.body.active),stock=Number(req.body.stock_quantity),sku=safeText(req.body.sku,80),category=safeText(req.body.category,100),domain=safeText(req.body.domain,30),featured=parseBoolean(req.body.featured),imageUrl=safeText(req.body.image_url,1800000);
+    if(!Number.isInteger(id)||!name||!['commerce','distribution','technologie','international'].includes(domain)||featured===null||!Number.isInteger(price)||price<0||active===null||!Number.isInteger(stock)||stock<0||!/^[A-Z]{3}$/.test(currency)||(imageUrl&& !(/^https:\/\//i.test(imageUrl)||/^data:image\/(?:webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/i.test(imageUrl)))) return res.status(400).json({error:'Produit invalide.'});
+    const r=await pool.query('UPDATE products SET name=$1,description=$2,price_cents=$3,currency=$4,sku=$5,category=$6,image_url=$7,stock_quantity=$8,domain=$9,featured=$10,active=$11,updated_at=NOW() WHERE id=$10 RETURNING *',[name,description,price,currency,sku||null,category,imageUrl,stock,domain,featured,active,id]);
     if(!r.rowCount)return res.status(404).json({error:'Produit introuvable.'}); await audit(req,'update','product',id); res.json(r.rows[0]);
   }catch(e){next(e);}
 });
