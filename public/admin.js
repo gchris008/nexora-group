@@ -39,5 +39,5 @@ async function loadCustomers(){
   }).join('')||'<p>Aucun client.</p>';
  }catch(x){customers.textContent=x.message}
 }
-window.toggleCustomer=async(id,active)=>{try{await api('/api/admin/customers/'+id+'/status',{method:'PUT',body:JSON.stringify({active})});await loadCustomers()}catch(x){alert(x.message)}};
+window.toggleCustomer=async(id,active)=>{if(!confirm(active?'Activer ce compte client ?':'Désactiver ce compte client ?'))return;try{await api('/api/admin/customers/'+id+'/status',{method:'PUT',body:JSON.stringify({active})});await loadCustomers()}catch(x){alert(x.message)}};
 window.changeBalance=async(id,current)=>{const value=prompt('Nouveau solde en centimes (ex. 2500 = 25,00)',String(current));if(value===null)return;const amount=Number(value);if(!Number.isSafeInteger(amount)||amount<0){alert('Solde invalide.');return}try{await api('/api/admin/customers/'+id+'/balance',{method:'PUT',body:JSON.stringify({balance_cents:amount})});await loadCustomers()}catch(x){alert(x.message)}};
