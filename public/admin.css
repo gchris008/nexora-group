@@ -21,3 +21,26 @@ html[data-theme="light"] .top button{background:#00000007;color:#222}
 html[data-theme="light"] .verify-box{background:#00000003;border-color:#d4af3740}
 html[data-theme="light"] .secondary-action,html[data-theme="light"] .theme-toggle{background:#00000007;color:#222;border-color:#00000015}
 @media(max-width:700px){.profile-form{grid-template-columns:1fr}.profile-form label:nth-child(4),.profile-form label:nth-child(7),.profile-form button,.profile-form #profileMsg{grid-column:auto}}
+
+
+/* NEXORA — responsive client/admin surfaces */
+html{overflow-x:hidden;-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{overflow-x:hidden;min-width:0}
+button,input,textarea,select{font-size:16px;touch-action:manipulation}
+button{min-height:44px}
+@media(max-width:700px){
+  .shell{width:calc(100% - 20px);margin:16px auto}
+  .card{padding:19px 16px;border-radius:15px;margin-bottom:14px}
+  .shell>#loginView{margin:5vh auto}
+  .top{gap:12px;align-items:flex-start;flex-wrap:wrap}
+  .top-actions{width:100%;display:grid;grid-template-columns:1fr 1fr}
+  .top-actions button{width:100%}
+  .tabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{flex:0 0 auto;white-space:nowrap}
+  .page-logo{width:180px;height:118px}
+  .profile-form{grid-template-columns:1fr}
+  .profile-form label:nth-child(4),.profile-form label:nth-child(7),.profile-form button,.profile-form #profileMsg{grid-column:auto}
+  .item{overflow-wrap:anywhere}
+}
+@media(max-width:380px){.shell{width:calc(100% - 14px)}.card{padding:16px 13px}.page-logo{width:160px;height:106px}}
